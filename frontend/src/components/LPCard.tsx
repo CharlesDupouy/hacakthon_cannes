@@ -14,6 +14,7 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
   const { address } = useAccount()
   const [amount0, setAmount0] = useState('')
   const [amount1, setAmount1] = useState('')
+  const [lastEdited, setLastEdited] = useState<0 | 1>(0)
   const parsed0 = amount0 ? parseUnits(amount0, 6) : 0n
   const parsed1 = amount1 ? parseUnits(amount1, 6) : 0n
 
@@ -26,6 +27,20 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
   })
 
   const sqrtPrice = slot0Raw ? decodeSqrtPrice(slot0Raw) : 0n
+
+  // Auto-compute the paired amount when one side is edited
+  useEffect(() => {
+    if (sqrtPrice === 0n) return
+    const Q96f = 2 ** 96
+    const price = (Number(sqrtPrice) / Q96f) ** 2 // stataUSDT per stataUSDC ≈ USDT per USDC
+    if (lastEdited === 0 && amount0) {
+      const v = parseFloat(amount0)
+      if (!isNaN(v) && v > 0) setAmount1((v * price).toFixed(6))
+    } else if (lastEdited === 1 && amount1) {
+      const v = parseFloat(amount1)
+      if (!isNaN(v) && v > 0) setAmount0((v / price).toFixed(6))
+    }
+  }, [sqrtPrice, amount0, amount1, lastEdited])
 
   // Preview how many stata shares each amount wraps to
   const { data: preview0 } = useReadContract({
@@ -82,7 +97,7 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
       <div className="mb-3">
         <label className="block text-sm text-gray-500 mb-1">USDC amount</label>
         <input type="number" min="0" placeholder="0.00" value={amount0}
-          onChange={(e) => setAmount0(e.target.value)}
+          onChange={(e) => { setLastEdited(0); setAmount0(e.target.value) }}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" />
         {preview0 !== undefined && parsed0 > 0n && (
           <p className="text-xs text-gray-400 mt-1">≈ {(Number(preview0) / 1e6).toFixed(4)} stataUSDC shares</p>
@@ -92,7 +107,7 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
       <div className="mb-4">
         <label className="block text-sm text-gray-500 mb-1">USDT amount</label>
         <input type="number" min="0" placeholder="0.00" value={amount1}
-          onChange={(e) => setAmount1(e.target.value)}
+          onChange={(e) => { setLastEdited(1); setAmount1(e.target.value) }}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" />
         {preview1 !== undefined && parsed1 > 0n && (
           <p className="text-xs text-gray-400 mt-1">≈ {(Number(preview1) / 1e6).toFixed(4)} stataUSDT shares</p>
