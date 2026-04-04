@@ -8,6 +8,14 @@ export const POOL_MANAGER_ADDRESS = '0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408'
 export const TICK_LOWER = -887270
 export const TICK_UPPER = 887270
 
+// sqrtPrice at our tick bounds (from TickMath.getSqrtPriceAtTick)
+export const SQRT_PRICE_LOWER = 4295558252n
+export const SQRT_PRICE_UPPER = 1461300573427867316570072651998408279850435624081n
+
+// Storage slot for the pool's slot0 in PoolManager
+// = keccak256(poolId ++ uint256(6))  where 6 = POOLS_SLOT in StateLibrary
+export const POOL_SQRT_PRICE_SLOT = '0xc32179839d20006a26254d94cf46767f517849a4a8c8f033ee902576d63d2d12' as const
+
 export const MAINNET_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const
 export const MAINNET_USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7' as const
 

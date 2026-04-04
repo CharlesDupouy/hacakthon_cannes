@@ -104,3 +104,13 @@ export const ERC4626_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const
+
+export const POOL_MANAGER_ABI = [
+  {
+    name: 'extsload',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'slot', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'bytes32' }],
+  },
+] as const
