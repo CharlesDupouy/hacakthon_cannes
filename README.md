@@ -1,348 +1,193 @@
-# Yield-Enhanced Swap: USDe/sUSDe via Aave + Uniswap
+# Yield-Enhanced Swap — Uniswap v4 Hook + Aave
 
 > Hackathon project — Uniswap API Track
 
-## TL;DR
+## What it does
 
-Users swap **USDe <> sUSDe** through a simple interface (script/CLI).
-Under the hood, tokens are deposited into **Aave v3** and the actual **Uniswap v3 pool** holds **StaticAToken (non-rebasing) versions** of USDe and sUSDe.
-Liquidity providers earn **Uniswap swap fees + Aave lending yield + Aave incentive rewards**.
+Users swap **USDC <> USDT** through a simple interface.
+Under the hood, the **Uniswap v4 pool** holds **Aave StaticATokenLM** (non-rebasing ERC-4626) versions of both tokens.
+Liquidity providers earn **Uniswap swap fees + Aave lending yield simultaneously**.
 
 ```
-User deposits USDe or sUSDe
-        │
-        ▼
-┌──────────────────────┐
-│   Vault Contract      │  Wraps tokens: USDe → Aave → staticAToken (waUSDe)
-│   (our Solidity code) │  Same for sUSDe → wasUSDe
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│  Uniswap v3 Pool      │  Pool pair: waUSDe / wasUSDe
-│  (standard v3 pool)   │  Fees go to LPs as usual
-└──────────┬───────────┘
-           │
-           ▼
-   Aave yield accrues inside staticATokens (value goes up, not balance)
-   Aave incentive rewards → claimed by Vault → distributed to LPs
+User sends USDC
+     │
+     ▼
+┌─────────────────────────────────────────┐
+│             YieldHook.sol               │
+│   (Uniswap v4 Hook — our code)          │
+│                                         │
+│  swap() / addLiquidity() / remove()     │
+│  1. Pull USDC from user                 │
+│  2. Deposit USDC → Aave → stataUSDC     │
+│  3. Interact with Uniswap v4 pool       │
+│     (pool holds stataUSDC/stataUSDT)    │
+│  4. Redeem stataUSDT → USDT             │
+│  5. Send USDT to user                   │
+└─────────────────────────────────────────┘
+     │
+     ▼
+Aave yield accrues inside stataToken share price
+(not via balance rebasing — safe for AMM math)
 ```
+
+### Why StaticATokenLM (stataTokens)?
+
+Aave's aTokens rebase: the balance increases over time as interest accrues. This breaks Uniswap's constant-product AMM math. Aave's `StaticATokenLM` is a non-rebasing ERC-4626 wrapper: instead of the balance growing, the **share price** grows. The pool balance stays constant while value accrues — exactly what we need.
 
 ---
 
-## Architecture Decisions (already made)
+## Deployed Contracts — Base Sepolia (chain 84532)
 
-| Decision | Choice | Why |
+### Our contracts
+
+| Contract | Address | Notes |
 |---|---|---|
-| Rebasing problem | Use **Aave StaticATokenLM** (ERC-4626 wrapped aTokens) | aTokens rebase (balance increases over time), which breaks Uniswap pool math. StaticATokens are non-rebasing: their *value* increases instead. This is Aave's official solution. |
-| Uniswap version | **v3** (not v4) | v3 is battle-tested, well-documented, deployed on Sepolia. Easier to debug under time pressure. |
-| User interface | **CLI / scripts only** | Rules say UI is not required. Don't waste time on frontend. |
-| Yield narrative | Frame as **"yield-enhanced LP"** | The swap pair (USDe/sUSDe) won't have huge volume. The real product is that LPs earn more than on a standard pool. |
-| Target chain | **Sepolia testnet** + at least 1 small **mainnet tx** | Need tx IDs for submission. Sepolia for dev, mainnet for credibility. |
+| YieldHook | `0xBdF688ee8034C64B8f75ddEBf4468634586FD000` | v4 hook, afterInitialize only |
 
----
+### Uniswap v4 pool
 
-## What You Need to Build
+| Parameter | Value |
+|---|---|
+| currency0 | stataUSDC `0xf430cb6E2b85f99222fBFA6dFEa18Ff60FA6B32a` |
+| currency1 | stataUSDT `0xf63dA51069FAe9448747FA425F8Cb84B0149eC0F` |
+| Fee | 0.05% (500) |
+| Tick spacing | 10 |
+| Hook | YieldHook above |
 
-### Contract 1: `Vault.sol` — The wrapper/router
+### Aave v3 on Base Sepolia (real deployment, no mocks)
 
-This is the **core contract** your team writes. It sits between users and the Uniswap pool.
-
-**Functions it must have:**
-
-```solidity
-// --- LP functions ---
-depositAndAddLiquidity(address token, uint256 amount, int24 tickLower, int24 tickUpper)
-// 1. Takes USDe or sUSDe from user
-// 2. Deposits into Aave's StaticATokenLM wrapper (ERC-4626 deposit)
-// 3. Adds the staticAToken as liquidity to the Uniswap v3 pool
-// 4. Tracks the user's LP share (store the NFT position ID)
-
-removeLiquidityAndWithdraw(uint256 positionId)
-// 1. Removes liquidity from Uniswap pool (gets back staticATokens)
-// 2. Redeems staticATokens from Aave (gets back USDe/sUSDe)
-// 3. Returns underlying tokens to user
-
-// --- Swap functions ---
-swap(address tokenIn, uint256 amountIn, uint256 amountOutMin)
-// 1. Takes USDe or sUSDe from user
-// 2. Wraps into staticAToken
-// 3. Swaps on Uniswap v3 pool (waUSDe <> wasUSDe)
-// 4. Unwraps output staticAToken back to underlying
-// 5. Sends output token to user
-
-// --- Reward functions ---
-claimRewards()
-// Claims Aave incentive rewards from StaticATokenLM
-// Distributes to LPs proportionally
-```
-
-### Contract 2: Not needed — use existing deployments
-
-- **StaticATokenLM**: Already deployed by Aave. Find addresses in [`bgd-labs/aave-address-book`](https://github.com/bgd-labs/aave-address-book)
-- **Uniswap v3 Factory + NonfungiblePositionManager**: Already deployed. Use standard addresses.
-
----
-
-## Step-by-Step Implementation Plan
-
-### Step 0: Setup (30 min)
-
-```bash
-# Init a Foundry project
-forge init yield-enhanced-swap
-cd yield-enhanced-swap
-
-# Install dependencies
-forge install aave/aave-v3-core
-forge install Uniswap/v3-core
-forge install Uniswap/v3-periphery
-forge install OpenZeppelin/openzeppelin-contracts
-
-# Get a Uniswap API key
-# Go to https://developers.uniswap.org → sign up → create project → copy API key
-
-# Set up .env
-cp .env.example .env
-# Fill in: PRIVATE_KEY, RPC_URL (Sepolia alchemy/infura), UNISWAP_API_KEY, ETHERSCAN_API_KEY
-```
-
-### Step 1: Check if USDe/sUSDe are on Aave Sepolia (1 hour)
-
-**This is the first thing to verify.** USDe and sUSDe are on Aave v3 Ethereum mainnet, but might NOT be on Sepolia testnet.
-
-**If they ARE on Sepolia:**
-- Great, find the StaticATokenLM addresses in `aave-address-book` and use them.
-
-**If they are NOT on Sepolia (most likely):**
-- **Option A (recommended for hackathon):** Deploy 2 mock ERC-20 tokens on Sepolia ("MockUSDe" and "MocksUSDe"). Then deploy mock StaticAToken wrappers (simple ERC-4626 vaults that simulate yield). This lets you demo the full flow.
-- **Option B:** Work directly on mainnet with small amounts ($5-10 worth). More impressive but costs real money and is riskier.
-- **Option C:** Use a local Ethereum mainnet fork (`anvil --fork-url <mainnet-rpc>`). Good for development but you can't show real tx IDs.
-
-**Recommended approach:** Develop on a local mainnet fork (Option C), then deploy mocks on Sepolia for tx IDs (Option A), then do 1 small mainnet tx (Option B) for the submission.
-
-### Step 2: Write `Vault.sol` (3-4 hours)
-
-This is the main work. Key interfaces you'll interact with:
-
-```solidity
-// Aave StaticATokenLM (ERC-4626 standard)
-interface IStaticATokenLM {
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
-    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
-    function claimRewards(address receiver) external; // claims Aave incentives
-}
-
-// Uniswap v3 NonfungiblePositionManager
-interface INonfungiblePositionManager {
-    struct MintParams {
-        address token0;
-        address token1;
-        uint24 fee;
-        int24 tickLower;
-        int24 tickUpper;
-        uint256 amount0Desired;
-        uint256 amount1Desired;
-        uint256 amount0Min;
-        uint256 amount1Min;
-        address recipient;
-        uint256 deadline;
-    }
-    function mint(MintParams calldata params) external returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
-
-    struct DecreaseLiquidityParams {
-        uint256 tokenId;
-        uint128 liquidity;
-        uint256 amount0Min;
-        uint256 amount1Min;
-        uint256 deadline;
-    }
-    function decreaseLiquidity(DecreaseLiquidityParams calldata params) external returns (uint256 amount0, uint256 amount1);
-}
-```
-
-**Implementation order:**
-1. Write the swap function first (simplest, most demonstrable)
-2. Then LP deposit/withdraw
-3. Then reward claiming (nice-to-have, can be manual)
-
-### Step 3: Create the Uniswap Pool (1 hour)
-
-Write a deployment script that:
-
-```solidity
-// In a Foundry script
-INonfungiblePositionManager positionManager = INonfungiblePositionManager(POSITION_MANAGER_ADDRESS);
-
-// This creates the pool AND sets initial price in one call
-positionManager.createAndInitializePoolIfNecessary(
-    waUSDe,           // token0 (sort addresses!)
-    wasUSDe,          // token1
-    3000,             // 0.3% fee tier (good for correlated pairs, could also use 500 for 0.05%)
-    sqrtPriceX96      // initial price — calculate based on USDe/sUSDe exchange rate
-);
-```
-
-**Important:** token0 must be the lower address. Sort them!
-
-**Fee tier choice:** Since USDe/sUSDe are correlated (both USD-denominated), use either:
-- `500` (0.05%) — tightest spread, good for stablecoin-like pairs
-- `3000` (0.3%) — more fees per swap for LPs
-
-### Step 4: Integrate Uniswap API for Routing (2 hours)
-
-Write a script (TypeScript/Python) that uses the Uniswap API to route swaps:
-
-```typescript
-// scripts/swap.ts
-const UNISWAP_API = "https://api.uniswap.org";
-const API_KEY = process.env.UNISWAP_API_KEY;
-
-// 1. Check approval
-const approvalResp = await fetch(`${UNISWAP_API}/v1/check-approval`, {
-    method: "POST",
-    headers: { "x-api-key": API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({
-        token: USDe_ADDRESS,
-        amount: amountIn,
-        walletAddress: userAddress,
-        chainId: 1 // or 11155111 for Sepolia
-    })
-});
-
-// 2. Get quote
-const quoteResp = await fetch(`${UNISWAP_API}/v2/quote`, {
-    method: "POST",
-    headers: { "x-api-key": API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({
-        tokenIn: USDe_ADDRESS,
-        tokenInChainId: 1,
-        tokenOut: sUSDe_ADDRESS,
-        tokenOutChainId: 1,
-        amount: amountIn,
-        type: "EXACT_INPUT",
-        slippageTolerance: 0.5
-    })
-});
-
-// 3. Execute swap — the API returns tx calldata, submit it onchain
-const swapResp = await fetch(`${UNISWAP_API}/v2/swap`, { ... });
-const { to, data, value } = await swapResp.json();
-const tx = await wallet.sendTransaction({ to, data, value });
-console.log("Swap TX:", tx.hash); // ← THIS IS YOUR SUBMISSION TX ID
-```
-
-**Note:** The Uniswap API routing may not find your custom pool on Sepolia. In that case:
-- Use the API for mainnet demo (even a tiny swap)
-- For Sepolia, interact with the pool directly via the SwapRouter contract
-
-### Step 5: Write Demo Script (1-2 hours)
-
-Create `scripts/demo.sh` or `scripts/demo.ts` that runs the full flow:
-
-```
-1. Deploy Vault contract (or use already-deployed address)
-2. User A deposits 100 USDe → becomes LP
-3. User B swaps 10 USDe → sUSDe through the Vault
-4. Show that User A's position now has swap fees
-5. User A withdraws → gets back more than they deposited (fees + Aave yield)
-6. Print all transaction IDs
-```
-
-### Step 6: Submission Checklist (1 hour)
-
-- [ ] Public GitHub repo with all code
-- [ ] This README updated with actual deployed addresses and tx IDs
-- [ ] At least 3-5 transaction IDs (deploy, deposit, swap, withdraw, claim)
-- [ ] Demo video recorded (max 3 minutes) — screen record the demo script running
-- [ ] Fill out Uniswap Developer Feedback Form: https://developers.uniswap.org/feedback
-- [ ] Code is clean enough to read (not perfect, just not embarrassing)
-
----
-
-## Key Addresses You'll Need
-
-### Ethereum Mainnet
 | Contract | Address |
 |---|---|
-| USDe | `0x4c9EDD5852cd905f086C759E8383e09bff1E68B3` |
-| sUSDe | `0x9D39A5DE30e57443BfF2A8307A4256c8797A3497` |
-| Uniswap v3 Factory | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
-| Uniswap v3 NonfungiblePositionManager | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
-| Uniswap v3 SwapRouter02 | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` |
-| Aave v3 Pool (Ethereum) | Check `aave-address-book` for latest |
-| StaticATokenLM for USDe | Check `aave-address-book` — look for `stataUSDe` |
-| StaticATokenLM for sUSDe | Check `aave-address-book` — look for `statasUSDe` |
+| USDC (TestnetERC20) | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
+| USDT (TestnetERC20) | `0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a` |
+| stataUSDC (StaticATokenLM) | `0xf430cb6E2b85f99222fBFA6dFEa18Ff60FA6B32a` |
+| stataUSDT (StaticATokenLM) | `0xf63dA51069FAe9448747FA425F8Cb84B0149eC0F` |
+| Aave v3 Pool | `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27` |
+| Aave Faucet | `0xD9145b5F45Ad4519c7acCd6e0A4A82E83bB8A6Dc` |
 
-### Sepolia
+### Uniswap v4 on Base Sepolia
+
 | Contract | Address |
 |---|---|
-| Uniswap v3 Factory | `0x0227628f3F023bb0B980b67D528571c95c6DaC1c` |
-| Uniswap v3 NonfungiblePositionManager | `0x1238536071E1c677A632429e3655c799b22cDA52` |
-| MockUSDe | *deploy yourself* |
-| MocksUSDe | *deploy yourself* |
-
-> **TODO for team:** Verify all addresses before using. These may have changed.
+| PoolManager | `0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408` |
 
 ---
 
-## Tech Stack
+## Transaction History (Base Sepolia)
 
-- **Solidity** — Vault contract (use Solidity 0.8.20+)
-- **Foundry** — compile, test, deploy (`forge`, `cast`, `anvil`)
-- **TypeScript** — scripts for Uniswap API integration
-- **ethers.js v6** or **viem** — for tx submission
-- **Aave v3 StaticATokenLM** — non-rebasing aToken wrapper
-- **Uniswap v3** — AMM pool + position manager
+| Action | Tx Hash |
+|---|---|
+| Deploy YieldHook | `0xcd2f9a49cc897fe096c4b98ff24a128505a1c8c442c9edc2849aefad53dc133a` |
+| Initialize pool | `0x05d01370d711283ea8a382851d4762465a5e9bd4ee4dc132114ba4d7dc21bf0c` |
+| Add liquidity (100 USDC + 100 USDT) | `0x64a0a575b504a0e634d0e09c1727dfe0f6e6dff7f0ffcc4183326af75bbd3ff9` |
+| Swap (10 USDC -> USDT) | `0xb768732ba7c07fed057f44c295ac52f4dd2a039063f2886549b2dfa7518635f4` |
+
+All transactions visible on [BaseScan Sepolia](https://sepolia.basescan.org).
 
 ---
 
-## How to Dev (Local Mainnet Fork)
+## How to run
+
+### Prerequisites
 
 ```bash
-# Terminal 1: start local fork
-anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY --chain-id 31337
+git clone <repo> && cd hackathon-cannes
+forge install
+cp .env.example .env   # fill in PRIVATE_KEY, BASE_SEPOLIA_RPC_URL, UNISWAP_API_KEY
+```
 
-# Terminal 2: deploy and test
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+### Get test tokens (Aave faucet — only way to get testnet USDC/USDT)
 
-# Impersonate a whale to get USDe for testing
-cast send --rpc-url http://localhost:8545 \
-  --unlocked --from 0xSOME_USDE_WHALE \
-  0x4c9EDD5852cd905f086C759E8383e09bff1E68B3 \
-  "transfer(address,uint256)" YOUR_ADDRESS 1000000000000000000000
+```bash
+source .env
+cast send 0xD9145b5F45Ad4519c7acCd6e0A4A82E83bB8A6Dc \
+  "mint(address,address,uint256)" \
+  0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f $YOUR_ADDRESS 10000000000 \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+
+cast send 0xD9145b5F45Ad4519c7acCd6e0A4A82E83bB8A6Dc \
+  "mint(address,address,uint256)" \
+  0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a $YOUR_ADDRESS 10000000000 \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+```
+
+### Add liquidity
+
+```bash
+source .env
+export YIELD_HOOK_ADDRESS=0xBdF688ee8034C64B8f75ddEBf4468634586FD000
+forge script script/AddLiquidityV4.s.sol \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY --broadcast
+```
+
+### Swap (10 USDC -> USDT)
+
+```bash
+source .env
+export YIELD_HOOK_ADDRESS=0xBdF688ee8034C64B8f75ddEBf4468634586FD000
+forge script script/SwapV4.s.sol \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY --broadcast
+```
+
+### Remove liquidity
+
+```bash
+source .env
+export YIELD_HOOK_ADDRESS=0xBdF688ee8034C64B8f75ddEBf4468634586FD000
+export POSITION_ID=0
+forge script script/RemoveLiquidityV4.s.sol \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY --broadcast
+```
+
+### Uniswap API demo (TypeScript)
+
+```bash
+cd scripts && npm install
+# Dry run (no tx submitted):
+npx tsx uniswap-api.ts
+# Execute swap on-chain:
+npx tsx uniswap-api.ts --execute
+```
+
+Requires `UNISWAP_API_KEY` in `.env` (get from [developers.uniswap.org](https://developers.uniswap.org)).
+
+---
+
+## File structure
+
+```
+src/
+  YieldHook.sol           # Core hook — wraps/unwraps Aave, manages LP positions
+  interfaces/
+    IStaticATokenLM.sol   # Aave StaticATokenLM interface (ERC-4626 + claimRewards)
+
+script/
+  DeployYieldHook.s.sol   # CREATE2 mining + deploy (already done)
+  InitializePool.s.sol    # Create the v4 pool (already done)
+  AddLiquidityV4.s.sol    # Add 100 USDC + 100 USDT as full-range liquidity
+  SwapV4.s.sol            # Swap 10 USDC -> USDT through the hook
+  RemoveLiquidityV4.s.sol # Remove a position by ID
+
+scripts/
+  uniswap-api.ts          # TypeScript: quote + optional execute via Uniswap Trading API
 ```
 
 ---
 
-## Potential Pitfalls
+## Known limitations (testnet demo)
 
-1. **token0/token1 ordering** — Uniswap requires token0 < token1 (by address). Sort them or the pool creation reverts.
-2. **Approval dance** — Every step needs token approvals: user→Vault, Vault→StaticAToken, Vault→PositionManager. Don't forget any.
-3. **sqrtPriceX96 calculation** — Use `encodeSqrtRatioX96` from the Uniswap SDK, or calculate manually: `sqrt(price) * 2^96`. For a 1:1 pair, it's `79228162514264337593543950336`.
-4. **Tick spacing** — Different fee tiers have different tick spacings. For 0.05% fee: spacing=10. For 0.3%: spacing=60. Your tickLower/tickUpper must be multiples of the spacing.
-5. **StaticAToken might not exist for USDe/sUSDe on testnet** — See Step 1 above for workarounds.
+- **Pool initialized at 1:1** — stataUSDC has a higher liquidityIndex (~1.24) than stataUSDT (~1.0) because USDC has accrued more interest on this testnet. This means the true "fair" price is off from the initial pool price, causing non-trivial slippage on small swaps. Acceptable for demo purposes.
+- **No rewards on testnet** — `claimRewards()` works but yields nothing on Base Sepolia (no reward emissions).
+- **LP position tracking** — YieldHook tracks positions internally (no NFT). In production, a proper LP receipt token would be needed.
 
 ---
 
-## What "Done" Looks Like
+## Hackathon checklist
 
-A successful submission has:
-1. A Vault contract deployed on Sepolia (and optionally mainnet)
-2. A Uniswap v3 pool of waUSDe/wasUSDe with liquidity
-3. At least one swap going through the Vault (USDe in → sUSDe out)
-4. Transaction IDs for all of the above
-5. A 3-min video showing the scripts running and explaining the architecture
-6. The Uniswap API key used for at least the routing/quoting part
-
-The Aave reward claiming is a **nice-to-have** — get the core swap + LP flow working first.
-
----
-
-## Priority Order (if running low on time)
-
-1. **Swap flow** via Vault (deposit → wrap → swap → unwrap → withdraw) — this is the minimum viable demo
-2. **LP flow** (deposit → wrap → add liquidity → remove → unwrap) — shows the full value prop
-3. **Uniswap API integration** for routing — required by hackathon rules
-4. **Reward claiming** from Aave — cherry on top
-5. **Mainnet tx** — one small swap for credibility
+- [x] Smart contract deployed on Base Sepolia
+- [x] Uniswap v4 pool created with Aave stataToken pair
+- [x] Swap executed through the hook (tx ID above)
+- [x] LP deposit and withdrawal working
+- [x] Uniswap API used for quoting (`scripts/uniswap-api.ts`)
+- [ ] 3-minute demo video
+- [ ] Uniswap Developer Feedback Form: https://developers.uniswap.org/feedback

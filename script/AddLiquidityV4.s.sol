@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Script, console} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
@@ -60,15 +61,21 @@ contract AddLiquidityV4 is Script {
         uint160 sqrtPriceLower = TickMath.getSqrtPriceAtTick(TICK_LOWER);
         uint160 sqrtPriceUpper = TickMath.getSqrtPriceAtTick(TICK_UPPER);
 
-        // Compute the max liquidity achievable with 100 USDC + 100 USDT.
-        // stataTokens have slightly different exchange rates vs underlying,
-        // so we use the underlying amounts as an approximation (close enough for demo).
+        // The pool holds stataTokens, so liquidity must be computed from stata amounts.
+        // stataUSDC has a higher liquidityIndex (~1.24) so 100 USDC -> ~80 stataUSDC.
+        // Using underlying amounts directly would cause the hook to ask the pool for more
+        // stataTokens than it has, causing an ERC20InsufficientBalance revert.
+        uint256 stataAmount0 = IERC4626(STATA_USDC).previewDeposit(AMOUNT_USDC);
+        uint256 stataAmount1 = IERC4626(STATA_USDT).previewDeposit(AMOUNT_USDT);
+        console.log("Expected stataUSDC from 100 USDC:", stataAmount0);
+        console.log("Expected stataUSDT from 100 USDT:", stataAmount1);
+
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             sqrtPriceLower,
             sqrtPriceUpper,
-            AMOUNT_USDC,
-            AMOUNT_USDT
+            stataAmount0,
+            stataAmount1
         );
 
         require(liquidity > 0, "Computed liquidity is zero");
