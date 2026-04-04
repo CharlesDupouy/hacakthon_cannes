@@ -74,7 +74,7 @@ contract DeployYieldHook is Script {
             STATA_USDT
         );
 
-        require(address(hook) == hookAddress, "Address mismatch — salt incorrect");
+        require(address(hook) == hookAddress, "Address mismatch, salt incorrect");
         console.log("YieldHook deployed at:", address(hook));
         console.log("Pool will use currencies:");
         console.log("  currency0 (stataUSDC):", STATA_USDC);
