@@ -3,7 +3,7 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { parseUnits, maxUint256 } from 'viem'
 import {
   YIELD_HOOK_ADDRESS, USDC_ADDRESS, USDT_ADDRESS,
-  UNISWAP_API_BASE, MAINNET_USDC, MAINNET_USDT,
+  MAINNET_USDC, MAINNET_USDT,
 } from '../constants'
 import { YIELD_HOOK_ABI, ERC20_ABI } from '../abis'
 
@@ -60,11 +60,10 @@ export default function SwapCard() {
       setQuoteError(null)
       try {
         const raw = parseUnits(amount, 6).toString()
-        const res = await fetch(`${UNISWAP_API_BASE}/quote`, {
+        const res = await fetch(`/api/uniswap/quote`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': import.meta.env.VITE_UNISWAP_API_KEY ?? '',
           },
           body: JSON.stringify({
             tokenIn:         isReversed ? MAINNET_USDT : MAINNET_USDC,
