@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
 // PURPOSE:
 //   This Vault sits between users and the Uniswap v3 pool. Users deposit plain
