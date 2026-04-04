@@ -59,22 +59,6 @@ export default function App() {
           <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-dim/10 blur-[120px] rounded-full pointer-events-none" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-tertiary/10 blur-[120px] rounded-full pointer-events-none" />
 
-          {/* Tab pills */}
-          <div className="bg-surface-container-low p-1 rounded-full flex mb-12">
-            <button
-              onClick={() => setTab('swap')}
-              className="px-8 py-2 rounded-full text-sm font-semibold transition-all bg-surface-container-high text-primary shadow-lg font-label"
-            >
-              Swap
-            </button>
-            <button
-              onClick={() => setTab('liquidity')}
-              className="px-8 py-2 rounded-full text-sm font-semibold transition-all text-on-surface-variant hover:text-on-surface font-label"
-            >
-              Liquidity
-            </button>
-          </div>
-
           <SwapCard />
 
           <p className="mt-8 text-[10px] uppercase tracking-[0.2em] text-outline text-center max-w-md leading-loose">
