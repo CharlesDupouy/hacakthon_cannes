@@ -2,387 +2,257 @@
 
 You are helping build a hackathon project for the **Uniswap API track**. Read this entire file before writing any code.
 
+---
+
+## Current State (read this first)
+
+The project is **partially complete**. Here is exactly what has been done and what remains:
+
+### Done ✅
+- Vault.sol written and deployed on Base Sepolia
+- Uniswap v3 pool deployed on Base Sepolia (stataUSDC/stataUSDT)
+- Liquidity added to the pool
+- Full swap tested and working: USDC → Aave → Uniswap → Aave → USDT
+- removeLiquidityAndWithdraw tested and working
+- claimRewards tested and working
+
+### Still needed ❌
+- **Uniswap API TypeScript script** — required by hackathon rules (use `scripts/uniswap-api.ts`)
+- **README.md** updated with real deployed addresses and tx IDs
+- **Demo video** (3 minutes max)
+
+---
+
 ## Project Goal
 
-Build a system where users can **swap USDe <> sUSDe** or **provide liquidity** for this pair, but the underlying Uniswap pool actually holds **Aave-wrapped versions** of these tokens. This gives LPs extra yield from Aave on top of normal Uniswap swap fees.
+Build a system where users can **swap USDC <> USDT** (testnet) or **USDe <> sUSDe** (mainnet) but the underlying Uniswap pool holds **Aave StaticAToken (stata) wrapped versions**. LPs earn Uniswap swap fees + Aave lending yield simultaneously.
 
-## Hackathon Track Requirements
+### Testnet vs Mainnet Strategy
+- **Base Sepolia testnet**: uses real USDC/USDT + real Aave v3 StaticATokenLM (no mocks needed — Aave v3 is live on Base Sepolia)
+- **Ethereum Mainnet** (future): same Vault code, swap addresses to USDe/sUSDe + their Aave stata wrappers
 
-This project is for the Uniswap API hackathon track. Requirements:
-- Must integrate the **Uniswap API with a valid API key** from developers.uniswap.org
-- Must produce **transaction IDs** showing real onchain execution (testnet and/or mainnet)
-- Public GitHub repo with open-source code and clear README.md
-- Demo video (max 3 minutes)
-- No UI required — scripts/CLI are fine
+---
 
-## The Core Problem & Solution
+## Deployed Contracts (Base Sepolia, chain ID 84532)
 
-### The problem with aTokens
-Aave's aTokens are **rebasing**: their balance increases over time as lending yield accrues. If you put aTokens directly into a Uniswap pool, the pool contract doesn't know about the rebase — the extra balance becomes "phantom" reserves that break AMM pricing and can be arbitraged.
+### Our contracts
+| Contract | Address |
+|---|---|
+| Vault | `0x526dAE03f78C6295D2DB92f20268abB509F88095` |
+| Uniswap v3 Pool (stataUSDC/stataUSDT, 0.05%) | `0xe59cF48E3Cd4dBc234519d4222861D0573cB3054` |
 
-### The solution: StaticATokenLM (ERC-4626)
-Aave provides **StaticATokenLM** wrappers. These are ERC-4626 vaults that wrap aTokens into a **non-rebasing** token. Instead of the balance increasing, the **share price** increases. 1 waUSDe might be worth 1.001 USDe today and 1.002 USDe tomorrow, but the balance stays constant. This is safe for Uniswap pools.
+### Real Aave v3 on Base Sepolia
+| Contract | Address |
+|---|---|
+| USDC (TestnetERC20) | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
+| USDT (TestnetERC20) | `0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a` |
+| stataUSDC (StaticATokenLM) | `0xf430cb6E2b85f99222fBFA6dFEa18Ff60FA6B32a` |
+| stataUSDT (StaticATokenLM) | `0xf63dA51069FAe9448747FA425F8Cb84B0149eC0F` |
+| Aave v3 Pool | `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27` |
+| Aave Faucet | `0xD9145b5F45Ad4519c7acCd6e0A4A82E83bB8A6Dc` |
+
+### Uniswap v3 on Base Sepolia
+| Contract | Address |
+|---|---|
+| Factory | `0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24` |
+| NonfungiblePositionManager | `0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2` |
+| SwapRouter02 | `0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4` |
+
+---
+
+## Wallet
+
+Deployer address: `0xb9dfAC9688A2dE1F882d9e78495a40618576303d`
+
+To get test USDC/USDT (only way — they are Aave test tokens, not buyable):
+```bash
+cast send 0xD9145b5F45Ad4519c7acCd6e0A4A82E83bB8A6Dc "mint(address,address,uint256)" \
+  0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f \
+  YOUR_ADDRESS 10000000000 \
+  --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY
+```
+(repeat with USDT address for USDT)
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      USER                                │
-│              (holds USDe and/or sUSDe)                   │
-└──────────────┬──────────────────────┬───────────────────┘
-               │ swap()               │ depositAndAddLiquidity()
-               ▼                      ▼
-┌─────────────────────────────────────────────────────────┐
-│                   VAULT CONTRACT                         │
-│                   (we write this)                         │
-│                                                          │
-│  Responsibilities:                                       │
-│  1. Accept USDe/sUSDe from users                         │
-│  2. Deposit into Aave StaticATokenLM → get waUSDe/wasUSDe│
-│  3. Interact with Uniswap pool (swap or add liquidity)   │
-│  4. On withdrawal: unwrap staticATokens back to USDe/sUSDe│
-│  5. Claim and distribute Aave incentive rewards (bonus)  │
-└──────────┬───────────────────┬──────────────────────────┘
-           │                   │
-           ▼                   ▼
-┌──────────────────┐  ┌──────────────────────────────────┐
-│ Aave v3          │  │ Uniswap v3 Pool                   │
-│ StaticATokenLM   │  │ Pair: waUSDe / wasUSDe            │
-│                  │  │ Fee tier: 500 (0.05%) recommended  │
-│ waUSDe (ERC-4626)│  │                                    │
-│ wasUSDe(ERC-4626)│  │ Created by us via                  │
-└──────────────────┘  │ NonfungiblePositionManager         │
-                      └──────────────────────────────────┘
+User sends USDC or USDT
+        │
+        ▼
+┌──────────────────────────────────┐
+│          Vault.sol               │
+│  (0x526dAE03f78C6295D2DB92...)   │
+│                                  │
+│  swap():                         │
+│  1. Pull USDC from user          │
+│  2. Deposit USDC → Aave          │
+│     → get stataUSDC (ERC-4626)   │
+│  3. Swap stataUSDC → stataUSDT   │
+│     on Uniswap v3 pool           │
+│  4. Redeem stataUSDT → USDT      │
+│  5. Send USDT to user            │
+└──────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────┐
+│   Uniswap v3 Pool                │
+│   stataUSDC / stataUSDT          │
+│   Fee: 0.05% (500)               │
+│   (0xe59cF48E3Cd4dBc234...)      │
+└──────────────────────────────────┘
+        │
+        ▼
+   Aave yield accrues inside stata tokens
+   (share price increases over time)
 ```
 
-## What the Vault Contract Does — Function by Function
+---
 
-### `swap(address tokenIn, uint256 amountIn, uint256 amountOutMin)`
+## Critical Bugs Already Fixed (do not reintroduce)
 
-This is the **most important function** — build it first.
+### 1. SwapRouter02 interface — NO deadline in params
+SwapRouter02 on Base Sepolia does NOT have `deadline` in `ExactInputSingleParams`. Using it causes `unrecognized function selector` revert.
 
-Step-by-step logic:
-```
-1. Determine which token is input, which is output
-   - If tokenIn == USDe, then output is sUSDe (and vice versa)
-   - Determine the corresponding staticAToken wrappers for each
-
-2. Pull input tokens from user
-   - IERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn)
-
-3. Wrap input into staticAToken via Aave
-   - IERC20(tokenIn).approve(address(staticATokenIn), amountIn)
-   - uint256 wrappedAmount = IStaticATokenLM(staticATokenIn).deposit(amountIn, address(this))
-
-4. Swap on Uniswap v3 pool
-   - IERC20(staticATokenIn).approve(address(swapRouter), wrappedAmount)
-   - Call swapRouter.exactInputSingle() with:
-     - tokenIn: address of staticATokenIn (waUSDe or wasUSDe)
-     - tokenOut: address of staticATokenOut
-     - fee: pool fee tier (500 or 3000)
-     - recipient: address(this)  ← vault receives the output
-     - amountIn: wrappedAmount
-     - amountOutMinimum: calculate based on amountOutMin (need to convert from underlying to shares)
-     - sqrtPriceLimitX96: 0 (no price limit)
-
-5. Unwrap output staticAToken back to underlying
-   - uint256 outputAmount = IStaticATokenLM(staticATokenOut).redeem(swapOutput, msg.sender, address(this))
-   - This sends the underlying token (USDe or sUSDe) directly to the user
-
-6. Emit event with tx details
-```
-
-### `depositAndAddLiquidity(uint256 amountUSDe, uint256 amountsUSDe, int24 tickLower, int24 tickUpper)`
-
-LP function — build second.
-
-```
-1. Pull BOTH tokens from user
-   - transferFrom for USDe and sUSDe
-
-2. Wrap both into staticATokens
-   - deposit USDe → waUSDe
-   - deposit sUSDe → wasUSDe
-
-3. Approve both staticATokens to NonfungiblePositionManager
-
-4. Call positionManager.mint() with MintParams:
-   - token0/token1: waUSDe and wasUSDe (MUST be sorted by address, lower first)
-   - fee: pool fee tier
-   - tickLower/tickUpper: the range (must be multiples of tick spacing)
-   - amount0Desired/amount1Desired: the wrapped amounts
-   - amount0Min/amount1Min: can be 0 for hackathon (in prod, use slippage protection)
-   - recipient: address(this)  ← vault holds the NFT
-   - deadline: block.timestamp + 600
-
-5. Store the position NFT ID for this user
-   - mapping(address => uint256[]) public userPositions;
-   - userPositions[msg.sender].push(tokenId);
-
-6. Refund any leftover tokens that weren't used by the position
-```
-
-### `removeLiquidityAndWithdraw(uint256 positionId, uint128 liquidity)`
-
-Reverse of the above:
-```
-1. Verify msg.sender owns this position (check userPositions mapping)
-2. Call positionManager.decreaseLiquidity() → removes liquidity
-3. Call positionManager.collect() → actually transfers the tokens out
-4. Redeem both staticATokens back to underlying via Aave
-5. Send USDe and sUSDe back to user
-```
-
-### `claimRewards()` — Nice to have, build last
-
-```
-1. Call staticATokenUSDe.claimRewards(address(this))
-2. Call staticATokensUSDe.claimRewards(address(this))
-3. Distribute reward tokens proportionally to LPs based on their liquidity share
-   (For hackathon: just send all rewards to a single admin address and explain
-    proportional distribution in the video as "future work")
-```
-
-## Contract State Variables
-
+**Wrong (SwapRouter v1):**
 ```solidity
-// Immutable addresses (set in constructor)
-IERC20 public immutable usde;
-IERC20 public immutable susde;
-IStaticATokenLM public immutable waUSDe;   // staticAToken wrapper for USDe
-IStaticATokenLM public immutable wasUSDe;  // staticAToken wrapper for sUSDe
-INonfungiblePositionManager public immutable positionManager;
-ISwapRouter public immutable swapRouter;
-uint24 public immutable poolFee;            // 500 or 3000
-
-// LP tracking
-mapping(address => uint256[]) public userPositions;  // NFT token IDs per user
-```
-
-## Key Interfaces
-
-```solidity
-// Aave StaticATokenLM — implements ERC-4626
-interface IStaticATokenLM is IERC4626 {
-    // Standard ERC-4626:
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
-    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
-    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
-    function convertToShares(uint256 assets) external view returns (uint256);
-    function convertToAssets(uint256 shares) external view returns (uint256);
-
-    // Aave-specific:
-    function claimRewards(address receiver) external;
-}
-
-// Uniswap v3 SwapRouter
-interface ISwapRouter {
-    struct ExactInputSingleParams {
-        address tokenIn;
-        address tokenOut;
-        uint24 fee;
-        address recipient;
-        uint256 deadline;
-        uint256 amountIn;
-        uint256 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
-    }
-    function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut);
-}
-
-// Uniswap v3 NonfungiblePositionManager
-interface INonfungiblePositionManager {
-    struct MintParams {
-        address token0;
-        address token1;
-        uint24 fee;
-        int24 tickLower;
-        int24 tickUpper;
-        uint256 amount0Desired;
-        uint256 amount1Desired;
-        uint256 amount0Min;
-        uint256 amount1Min;
-        address recipient;
-        uint256 deadline;
-    }
-    function mint(MintParams calldata params)
-        external returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
-
-    struct DecreaseLiquidityParams {
-        uint256 tokenId;
-        uint128 liquidity;
-        uint256 amount0Min;
-        uint256 amount1Min;
-        uint256 deadline;
-    }
-    function decreaseLiquidity(DecreaseLiquidityParams calldata params)
-        external returns (uint256 amount0, uint256 amount1);
-
-    struct CollectParams {
-        uint256 tokenId;
-        address recipient;
-        uint128 amount0Max;
-        uint128 amount1Max;
-    }
-    function collect(CollectParams calldata params)
-        external returns (uint256 amount0, uint256 amount1);
-
-    function createAndInitializePoolIfNecessary(
-        address token0, address token1, uint24 fee, uint160 sqrtPriceX96
-    ) external returns (address pool);
+struct ExactInputSingleParams {
+    address tokenIn;
+    address tokenOut;
+    uint24 fee;
+    address recipient;
+    uint256 deadline;  // ← DO NOT ADD THIS for SwapRouter02
+    uint256 amountIn;
+    uint256 amountOutMinimum;
+    uint160 sqrtPriceLimitX96;
 }
 ```
 
-## Approval Chain (Critical — Many bugs here)
-
-Every token transfer between contracts needs a prior `approve()`. Here is every approval needed:
-
-```
-USER → VAULT:
-  user calls usde.approve(vault, amount)    before swap or LP deposit
-  user calls susde.approve(vault, amount)   before swap or LP deposit
-
-VAULT → AAVE STATIC WRAPPER:
-  vault calls usde.approve(waUSDe, amount)   before depositing to Aave
-  vault calls susde.approve(wasUSDe, amount) before depositing to Aave
-
-VAULT → UNISWAP:
-  vault calls waUSDe.approve(swapRouter, amount)          before swaps
-  vault calls wasUSDe.approve(swapRouter, amount)         before swaps
-  vault calls waUSDe.approve(positionManager, amount)     before adding liquidity
-  vault calls wasUSDe.approve(positionManager, amount)    before adding liquidity
-```
-
-**Optimization:** The Vault can set max approvals to Aave and Uniswap contracts in the constructor (these are trusted protocols). Only user→Vault approvals need to happen per-transaction.
-
-## Token Ordering for Uniswap
-
-Uniswap v3 requires `token0 < token1` (by address, uint160 comparison). When creating the pool or minting positions:
+**Correct (SwapRouter02):**
 ```solidity
-(address token0, address token1) = address(waUSDe) < address(wasUSDe)
-    ? (address(waUSDe), address(wasUSDe))
-    : (address(wasUSDe), address(waUSDe));
-```
-Get this wrong and every call reverts.
-
-## Initial Pool Price (sqrtPriceX96)
-
-For a 1:1 price ratio (both tokens ≈ $1):
-```
-sqrtPriceX96 = sqrt(1) * 2^96 = 79228162514264337593543950336
+struct ExactInputSingleParams {
+    address tokenIn;
+    address tokenOut;
+    uint24 fee;
+    address recipient;
+    uint256 amountIn;
+    uint256 amountOutMinimum;
+    uint160 sqrtPriceLimitX96;
+}
 ```
 
-If sUSDe is worth more than USDe (because sUSDe accrues Ethena staking yield), adjust:
-```
-sqrtPriceX96 = sqrt(priceOfToken1InToken0) * 2^96
-```
-Where price = how many token0 per 1 token1. Token0 is the lower address.
-
-## Tick Spacing by Fee Tier
-
-| Fee (bps) | Fee tier value | Tick spacing |
-|-----------|---------------|-------------|
-| 1 (0.01%) | 100 | 1 |
-| 5 (0.05%) | 500 | 10 |
-| 30 (0.3%) | 3000 | 60 |
-| 100 (1%) | 10000 | 200 |
-
-`tickLower` and `tickUpper` must be multiples of the tick spacing. For full range on 0.05% pool:
+### 2. StaticATokenLM claimRewards signature
+The real Aave `StataTokenV2.claimRewards` takes a second argument `address[] calldata rewards`:
 ```solidity
-int24 tickLower = -887270;  // nearest multiple of 10 to MIN_TICK
-int24 tickUpper = 887270;   // nearest multiple of 10 to MAX_TICK
+// WRONG:
+waUSDe.claimRewards(owner);
+
+// CORRECT:
+waUSDe.claimRewards(owner, new address[](0));
 ```
 
-## Development Approach
+### 3. Vault naming (cosmetic — do not change)
+The Vault variables are named `usde`, `susde`, `waUSDe`, `wasUSDe` internally but they hold USDC/USDT on testnet. This is intentional — the logic is identical, only the constructor addresses differ. Do not rename.
 
-### Local development: mainnet fork
+---
+
+## Pool Price Note
+
+The pool was initialized at 1:1 (stataUSDC:stataUSDT) but stataUSDC has a higher Aave liquidityIndex (~1.24) than stataUSDT (~1.0). This means swaps give slightly worse rates than expected. This is a testnet initialization detail — acceptable for the hackathon demo.
+
+---
+
+## Scripts
+
+All scripts are in `script/`. Run with:
 ```bash
-anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY --chain-id 31337
-```
-This gives you access to real Aave, real Uniswap, real USDe/sUSDe — no mocks needed.
-
-Use `cast send --unlocked --from <whale>` to get test tokens.
-
-### Testnet deployment: Sepolia with mocks
-USDe/sUSDe likely don't exist on Aave Sepolia. Deploy:
-1. MockUSDe (simple ERC-20 with mint function)
-2. MocksUSDe (simple ERC-20 with mint function)
-3. MockStaticAToken for each (simple ERC-4626 vault — deposit gives shares, redeem gives assets, no actual yield needed for demo)
-4. Deploy Vault pointing to mocks
-5. Create Uniswap pool on Sepolia with the mock static tokens
-
-### Mainnet: one small tx
-Do at least one real swap or LP deposit on mainnet with $5-10 worth of tokens for the submission.
-
-## Uniswap API Integration
-
-The hackathon **requires** use of the Uniswap API with an API key. Use it for:
-
-1. **Quoting** — get the best swap route and expected output
-2. **Swap execution** — get encoded calldata for the Universal Router
-
-```
-API base: https://api.uniswap.org
-Auth header: x-api-key: YOUR_KEY
-
-POST /v2/quote   → get quote for a swap
-POST /v2/swap    → get tx calldata to execute
-POST /v1/check-approval → check if router is approved
+source .env
+forge script script/SCRIPT_NAME.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY --broadcast
 ```
 
-The API may not route through your custom Sepolia pool. That's fine — use it for mainnet demo or to show you can quote standard pairs. The Vault contract handles direct pool interaction for your custom pool.
+| Script | What it does |
+|---|---|
+| `DeployMocks.s.sol` | Creates the Uniswap v3 pool (already done, don't run again) |
+| `DeployVault.s.sol` | Deploys the Vault (already done, don't run again) |
+| `AddLiquidity.s.sol` | Adds 100 USDC + 100 USDT liquidity via Vault |
+| `Swap.s.sol` | Swaps 10 USDC → USDT via Vault |
+| `RemoveLiquidity.s.sol` | Removes liquidity from a position (update POSITION_ID and LIQUIDITY before running) |
+| `ClaimRewards.s.sol` | Claims Aave rewards (owner only, testnet has no rewards) |
 
-## File Structure (Foundry project)
+---
 
+## What Remains: Uniswap API Script
+
+The hackathon **requires** use of the Uniswap API with an API key from developers.uniswap.org.
+
+Write `scripts/uniswap-api.ts` that:
+1. Gets a **quote** from the Uniswap API for swapping USDC → USDT
+2. Shows the best route found
+3. Optionally executes the swap via the API calldata
+
+```typescript
+// API base
+const UNISWAP_API = "https://api.uniswap.org";
+const API_KEY = process.env.UNISWAP_API_KEY;
+
+// Quote endpoint
+POST /v2/quote
+{
+  tokenIn: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",  // USDC Base Sepolia
+  tokenInChainId: 84532,
+  tokenOut: "0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a", // USDT Base Sepolia
+  tokenOutChainId: 84532,
+  amount: "10000000",  // 10 USDC (6 decimals)
+  type: "EXACT_INPUT"
+}
+
+// Approval check
+POST /v1/check-approval
+{
+  token: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",
+  amount: "10000000",
+  walletAddress: "0xb9dfAC9688A2dE1F882d9e78495a40618576303d",
+  chainId: 84532
+}
 ```
-yield-enhanced-swap/
-├── src/
-│   ├── Vault.sol                 ← THE main contract
-│   ├── interfaces/
-│   │   ├── IStaticATokenLM.sol
-│   │   ├── ISwapRouter.sol
-│   │   └── INonfungiblePositionManager.sol
-│   └── mocks/                    ← for Sepolia deployment
-│       ├── MockERC20.sol
-│       └── MockStaticAToken.sol  ← simple ERC-4626
-├── script/
-│   ├── Deploy.s.sol              ← deploy Vault + create pool
-│   └── Demo.s.sol                ← run full demo flow
-├── test/
-│   └── Vault.t.sol               ← fork tests
-├── scripts/
-│   └── uniswap-api.ts            ← Uniswap API integration (TypeScript)
-├── .env.example
-├── foundry.toml
-├── CLAUDE.md                     ← this file
-└── README.md                     ← public readme
-```
 
-## What "Done" Looks Like
+Note: The API may not find a route for our custom pool on Base Sepolia testnet. If it doesn't, use it to quote on mainnet (USDC → USDT on Ethereum) to demonstrate API usage, while the Vault handles the actual testnet execution.
 
-Minimum viable submission:
-1. Vault.sol deployed (Sepolia or mainnet)
-2. Uniswap v3 pool created with waUSDe/wasUSDe (or mocks)
-3. At least one swap executed through the Vault
-4. Uniswap API used for quoting or routing (with API key)
-5. Transaction IDs collected for submission
-6. 3-minute demo video
+---
 
-## Build Priority
+## Key Addresses for Ethereum Mainnet (future)
 
-1. **swap()** function in Vault — most demonstrable, simplest
-2. **Pool creation** script — needed for swap to work
-3. **depositAndAddLiquidity()** — shows the full value prop
-4. **Uniswap API script** — required by hackathon
-5. **removeLiquidityAndWithdraw()** — completes the LP flow
-6. **claimRewards()** — cherry on top, skip if short on time
+| Contract | Address |
+|---|---|
+| USDe | `0x4c9EDD5852cd905f086C759E8383e09bff1E68B3` |
+| sUSDe | `0x9D39A5DE30e57443BfF2A8307A4256c8797A3497` |
+| Uniswap v3 Factory | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
+| NonfungiblePositionManager | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
+| SwapRouter02 | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` |
+
+---
+
+## Hackathon Requirements Checklist
+
+- [x] Vault contract deployed on Base Sepolia
+- [x] Uniswap v3 pool created with stata tokens
+- [x] Swap executed through the Vault (tx ID exists)
+- [x] LP deposit and withdrawal working
+- [ ] Uniswap API used with API key
+- [ ] README updated with tx IDs and addresses
+- [ ] 3-minute demo video recorded
+- [ ] Uniswap Developer Feedback Form filled out: https://developers.uniswap.org/feedback
+
+---
 
 ## Common Mistakes to Avoid
 
-- Forgetting to sort token0/token1 by address
-- Missing an approval in the chain (there are 6+ approvals needed)
-- Using wrong fee tier value (500, not 0.05)
-- Tick values not being multiples of tick spacing
-- Trying to use aTokens directly instead of StaticATokenLM
-- Not converting between underlying amounts and share amounts when setting slippage
-- Forgetting to call collect() after decreaseLiquidity() (decrease removes liquidity, collect actually transfers tokens)
+- Do NOT add `deadline` to SwapRouter02's ExactInputSingleParams
+- Do NOT call `claimRewards(address)` with one arg — use `claimRewards(address, address[])`
+- Always sort token0/token1 by address (token0 < token1) for Uniswap
+- USDC/USDT use **6 decimals** (not 18)
+- stataUSDC/stataUSDT use **6 decimals** too
+- Tick values must be multiples of tick spacing (10 for 0.05% fee tier)
+- After `decreaseLiquidity()` you MUST call `collect()` to actually receive tokens
+- The Aave faucet (`0xD9145b...`) is the only way to get test USDC/USDT on Base Sepolia
