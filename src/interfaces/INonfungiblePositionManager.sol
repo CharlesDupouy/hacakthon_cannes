@@ -29,12 +29,10 @@ interface INonfungiblePositionManager {
     /// @param sqrtPriceX96 The initial sqrt(price) * 2^96 of the pool
     ///        For 1:1 price: sqrtPriceX96 = 79228162514264337593543950336
     /// @return pool The address of the created/existing pool
-    function createAndInitializePoolIfNecessary(
-        address token0,
-        address token1,
-        uint24 fee,
-        uint160 sqrtPriceX96
-    ) external payable returns (address pool);
+    function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96)
+        external
+        payable
+        returns (address pool);
 
     // ═══════════════════════════════════════════════════════════════════
     //                       MINT (ADD LIQUIDITY)
@@ -75,12 +73,7 @@ interface INonfungiblePositionManager {
     function mint(MintParams calldata params)
         external
         payable
-        returns (
-            uint256 tokenId,
-            uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1
-        );
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
     // ═══════════════════════════════════════════════════════════════════
     //                  DECREASE LIQUIDITY (STEP 1/2)
@@ -131,8 +124,5 @@ interface INonfungiblePositionManager {
     /// @param params The collect parameters
     /// @return amount0 The amount of token0 collected
     /// @return amount1 The amount of token1 collected
-    function collect(CollectParams calldata params)
-        external
-        payable
-        returns (uint256 amount0, uint256 amount1);
+    function collect(CollectParams calldata params) external payable returns (uint256 amount0, uint256 amount1);
 }

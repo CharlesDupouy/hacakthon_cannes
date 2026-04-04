@@ -69,5 +69,5 @@ interface IStaticATokenLM is IERC20 {
     /// @dev This is an Aave-specific extension — not part of standard ERC-4626.
     ///      Rewards come from Aave's liquidity mining program (e.g., stkAAVE).
     /// @param receiver The address that will receive the reward tokens
-    function claimRewards(address receiver) external;
+    function claimRewards(address receiver, address[] calldata rewards) external;
 }

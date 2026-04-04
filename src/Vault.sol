@@ -101,11 +101,7 @@ contract Vault {
     /// @param amountIn The amount of input tokens the user provided
     /// @param amountOut The amount of output tokens the user received
     event Swapped(
-        address indexed user,
-        address indexed tokenIn,
-        address indexed tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
+        address indexed user, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut
     );
 
     /// @notice Emitted when a user adds liquidity through the Vault
@@ -115,11 +111,7 @@ contract Vault {
     /// @param amountsUSDe The amount of sUSDe actually used
     /// @param liquidity The actual liquidity minted in the pool
     event LiquidityAdded(
-        address indexed user,
-        uint256 indexed tokenId,
-        uint256 amountUSDe,
-        uint256 amountsUSDe,
-        uint128 liquidity
+        address indexed user, uint256 indexed tokenId, uint256 amountUSDe, uint256 amountsUSDe, uint128 liquidity
     );
 
     /// @notice Emitted when a user removes liquidity from the Vault
@@ -127,12 +119,7 @@ contract Vault {
     /// @param tokenId The NFT position that was (partially) liquidated
     /// @param amountUSDe The amount of USDe returned to the user
     /// @param amountsUSDe The amount of sUSDe returned to the user
-    event LiquidityRemoved(
-        address indexed user,
-        uint256 indexed tokenId,
-        uint256 amountUSDe,
-        uint256 amountsUSDe
-    );
+    event LiquidityRemoved(address indexed user, uint256 indexed tokenId, uint256 amountUSDe, uint256 amountsUSDe);
 
     /// @notice Emitted when Aave rewards are claimed by the admin
     event RewardsClaimed(address indexed admin);
@@ -268,11 +255,7 @@ contract Vault {
     /// @param amountOutMin The minimum amount of output tokens (in underlying terms)
     ///        that the user is willing to accept. Reverts if slippage is too high.
     /// @return amountOut The actual amount of output tokens received by the user
-    function swap(
-        address tokenIn,
-        uint256 amountIn,
-        uint256 amountOutMin
-    ) external returns (uint256 amountOut) {
+    function swap(address tokenIn, uint256 amountIn, uint256 amountOutMin) external returns (uint256 amountOut) {
         // ── Step 0: Input validation ──────────────────────────────────
         //    We only support USDe and sUSDe as input tokens. Anything
         //    else would have no corresponding staticAToken wrapper.
@@ -347,11 +330,10 @@ contract Vault {
                 tokenIn: address(staticIn),
                 tokenOut: address(staticOut),
                 fee: poolFee,
-                recipient: address(this),  // Vault receives wrapped output
-                deadline: block.timestamp, // Must execute in this block
+                recipient: address(this), // Vault receives wrapped output
                 amountIn: wrappedAmount,
                 amountOutMinimum: staticOut.convertToShares(amountOutMin),
-                sqrtPriceLimitX96: 0       // No price limit
+                sqrtPriceLimitX96: 0 // No price limit
             })
         );
 
@@ -423,12 +405,10 @@ contract Vault {
     /// @param tickUpper The upper tick of the concentration range (must be multiple of tick spacing)
     /// @return tokenId The Uniswap v3 NFT position ID (tracked in userPositions)
     /// @return liquidity The actual liquidity minted in the pool
-    function depositAndAddLiquidity(
-        uint256 amountUSDe,
-        uint256 amountsUSDe,
-        int24 tickLower,
-        int24 tickUpper
-    ) external returns (uint256 tokenId, uint128 liquidity) {
+    function depositAndAddLiquidity(uint256 amountUSDe, uint256 amountsUSDe, int24 tickLower, int24 tickUpper)
+        external
+        returns (uint256 tokenId, uint128 liquidity)
+    {
         // ── Step 1: Pull BOTH underlying tokens from user ─────────────
         //    User must have called both:
         //      usde.approve(vault, amountUSDe)
@@ -478,12 +458,10 @@ contract Vault {
     ///      CRITICAL: Uniswap v3 requires token0 < token1 (sorted by address).
     ///      If you get this wrong, EVERY call to the pool reverts with a cryptic error.
     ///      This is listed as the #1 common mistake in CLAUDE.md.
-    function _mintPosition(
-        uint256 wrappedUSDe,
-        uint256 wrappedsUSDe,
-        int24 tickLower,
-        int24 tickUpper
-    ) internal returns (uint256 tokenId, uint128 liquidity) {
+    function _mintPosition(uint256 wrappedUSDe, uint256 wrappedsUSDe, int24 tickLower, int24 tickUpper)
+        internal
+        returns (uint256 tokenId, uint128 liquidity)
+    {
         // ── Sort token addresses for Uniswap ──────────────────────────
         //    We sort the addresses and corresponding amounts together so
         //    amount0 always matches token0 and amount1 matches token1.
@@ -651,7 +629,7 @@ contract Vault {
                 tokenId: positionId,
                 recipient: address(this), // Vault receives for unwrapping
                 amount0Max: type(uint128).max, // Collect everything owed
-                amount1Max: type(uint128).max  // Including accumulated fees
+                amount1Max: type(uint128).max // Including accumulated fees
             })
         );
 
@@ -731,10 +709,10 @@ contract Vault {
 
         // Claim rewards from the USDe wrapper (waUSDe)
         // claimRewards(receiver) sends any accrued Aave rewards to the receiver
-        waUSDe.claimRewards(owner);
+        waUSDe.claimRewards(owner, new address[](0));
 
         // Claim rewards from the sUSDe wrapper (wasUSDe)
-        wasUSDe.claimRewards(owner);
+        wasUSDe.claimRewards(owner, new address[](0));
 
         // Emit event for tracking
         emit RewardsClaimed(owner);
@@ -775,11 +753,7 @@ contract Vault {
     /// @param tokenIn The input token address (must be USDe or sUSDe)
     /// @param amountIn The amount of input tokens
     /// @return estimatedOut The approximate output amount (before Uniswap fees/slippage)
-    function previewSwap(address tokenIn, uint256 amountIn)
-        external
-        view
-        returns (uint256 estimatedOut)
-    {
+    function previewSwap(address tokenIn, uint256 amountIn) external view returns (uint256 estimatedOut) {
         if (tokenIn != address(usde) && tokenIn != address(susde)) {
             revert InvalidToken();
         }

@@ -27,7 +27,6 @@ interface ISwapRouter {
         address tokenOut;
         uint24 fee;
         address recipient;
-        uint256 deadline;
         uint256 amountIn;
         uint256 amountOutMinimum;
         uint160 sqrtPriceLimitX96;
@@ -36,8 +35,5 @@ interface ISwapRouter {
     /// @notice Swaps `amountIn` of one token for as much as possible of another token
     /// @param params The parameters for the swap (see ExactInputSingleParams above)
     /// @return amountOut The amount of the output token received
-    function exactInputSingle(ExactInputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountOut);
+    function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 }

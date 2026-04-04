@@ -5,12 +5,10 @@ import {Script, console} from "../lib/forge-std/src/Script.sol";
 import {IERC20} from "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 interface INonfungiblePositionManager {
-    function createAndInitializePoolIfNecessary(
-        address token0,
-        address token1,
-        uint24 fee,
-        uint160 sqrtPriceX96
-    ) external payable returns (address pool);
+    function createAndInitializePoolIfNecessary(address token0, address token1, uint24 fee, uint160 sqrtPriceX96)
+        external
+        payable
+        returns (address pool);
 }
 
 /// @notice Creates the Uniswap v3 pool on Base Sepolia using real Aave stata tokens.
@@ -33,9 +31,7 @@ contract DeployPool is Script {
         vm.startBroadcast();
 
         // Uniswap requires token0 < token1 by address
-        (address token0, address token1) = STATA_USDC < STATA_USDT
-            ? (STATA_USDC, STATA_USDT)
-            : (STATA_USDT, STATA_USDC);
+        (address token0, address token1) = STATA_USDC < STATA_USDT ? (STATA_USDC, STATA_USDT) : (STATA_USDT, STATA_USDC);
 
         address pool = INonfungiblePositionManager(POSITION_MANAGER)
             .createAndInitializePoolIfNecessary(token0, token1, FEE, SQRT_PRICE_1_TO_1);
