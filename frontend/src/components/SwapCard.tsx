@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { parseUnits, maxUint256 } from 'viem'
-import { YIELD_HOOK_ADDRESS, USDC_ADDRESS, USDT_ADDRESS, MAINNET_USDC, MAINNET_USDT } from '../constants'
-import { YIELD_HOOK_ABI, ERC20_ABI } from '../abis'
+import { YIELD_HOOK_ADDRESS, USDC_ADDRESS, USDT_ADDRESS, MAINNET_USDC, MAINNET_USDT, POOL_MANAGER_ADDRESS, POOL_LIQUIDITY_SLOT } from '../constants'
+import { YIELD_HOOK_ABI, ERC20_ABI, POOL_MANAGER_ABI } from '../abis'
 
 const USDC_ICON = 'https://lh3.googleusercontent.com/aida-public/AB6AXuB2tWR_3-e9hJaqkr_vVMxA8zAECECB3DgIVK5tjHkMdHajYlWjF_hdoKLIUdck4ZTwQ3-1W94PPSxQjtsx_LlOEeaO4Vh_VCgjDz8VR52uroATiP35erRcGeWiGBSCv6ZsHlUaSTM0Kd2hB4gDuxzvm8PTJoZh4UBd_PrVVSI88D0AyyOG3BIgiB88ElyRvjuEOoc68RgpecV34zWKM9JtBTzoAKG8yfQcTx4_AFxkdTrbwKB_cgFcd3bpvfLYrNdGVDBCTxR1dwRk'
 const USDT_ICON = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDK90M7p8oB_F_ecSy8U8wxvGDtVkITpeSqqm7LtzbLMeMtNHN-2FMV2gOlxNnet4BgtwGR1LxRLNBHsgaQzQSuefRPg31W10PzMHwF46aHrXTg8ja1uNKTahoMySlM9_Gydi7s1fItQK74ieRm6uJGRqauapD_lSvy6Laa1aJa2kyhNlostJnXtMmqd0XfGzJ7reRbRH_5H069M5A-q7qM_icaDzWy8MfpZmVij2EEZ1t8Q2ZKGURo8zzrJ8KrP2YWqB4KKUSPSOjD'
@@ -32,6 +32,14 @@ export default function SwapCard() {
     address: tokenIn, abi: ERC20_ABI, functionName: 'allowance',
     args: [address!, YIELD_HOOK_ADDRESS], query: { enabled: !!address },
   })
+
+  // Read active pool liquidity — if 0, swap will revert (nothing to swap against)
+  const { data: liquidityRaw } = useReadContract({
+    address: POOL_MANAGER_ADDRESS, abi: POOL_MANAGER_ABI,
+    functionName: 'extsload', args: [POOL_LIQUIDITY_SLOT],
+  })
+  const poolLiquidity = liquidityRaw ? BigInt(liquidityRaw) : null
+  const poolEmpty = poolLiquidity !== null && poolLiquidity === 0n
 
   const { writeContract: approve, data: approveTxHash, isPending: approveLoading } = useWriteContract()
   const { writeContract: swap, data: swapTxHash, isPending: swapLoading } = useWriteContract()
@@ -147,6 +155,10 @@ export default function SwapCard() {
       {!address ? (
         <div className="w-full py-4 rounded-xl bg-surface-container-high text-outline text-center font-label text-sm">
           Connect your wallet to swap
+        </div>
+      ) : poolEmpty ? (
+        <div className="w-full py-4 rounded-xl bg-surface-container-high border border-error-dim/30 text-center font-label text-sm text-error-dim">
+          No liquidity in pool — add liquidity first
         </div>
       ) : needsApproval ? (
         <button

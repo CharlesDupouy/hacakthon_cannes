@@ -16,6 +16,9 @@ export const SQRT_PRICE_UPPER = 146130057342786731657007265199840827985043562408
 // = keccak256(poolId ++ uint256(6))  where 6 = POOLS_SLOT in StateLibrary
 export const POOL_SQRT_PRICE_SLOT = '0x6c19c21d24533d7012a515d44686bc47d2d1e07c5ad6c4b81aa63641ed10aa63' as const
 
+// Pool liquidity slot = POOL_SQRT_PRICE_SLOT + 3 (offset within Pool.State struct)
+export const POOL_LIQUIDITY_SLOT = '0x6c19c21d24533d7012a515d44686bc47d2d1e07c5ad6c4b81aa63641ed10aa66' as const
+
 export const MAINNET_USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const
 export const MAINNET_USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7' as const
 
