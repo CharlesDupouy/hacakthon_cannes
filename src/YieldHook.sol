@@ -72,6 +72,12 @@ contract YieldHook is IHooks {
         int24 tickUpper;
         uint128 liquidity;
         bytes32 salt;
+        /// @notice stataToken0 shares actually consumed by Uniswap at deposit time.
+        ///         Used to compute P&L: previewRedeem(stataDeposited0) at any future
+        ///         time gives the underlying value of the original deposit.
+        uint128 stataDeposited0;
+        /// @notice stataToken1 shares actually consumed by Uniswap at deposit time.
+        uint128 stataDeposited1;
     }
 
     mapping(uint256 => Position) public positions;
@@ -332,17 +338,22 @@ contract YieldHook is IHooks {
         positionId = nextPositionId++;
         bytes32 salt = bytes32(positionId);
 
-        // Add liquidity inside unlock context
-        poolManager.unlock(
+        // Add liquidity inside unlock context.
+        // The callback returns the exact stataToken shares consumed by the pool
+        // (may be less than what was wrapped if price is at a range boundary).
+        bytes memory result = poolManager.unlock(
             abi.encode(Op.ADD_LIQ, abi.encode(tickLower, tickUpper, int256(uint256(liquidity)), salt))
         );
+        (uint256 used0, uint256 used1) = abi.decode(result, (uint256, uint256));
 
         positions[positionId] = Position({
-            user:      msg.sender,
-            tickLower: tickLower,
-            tickUpper: tickUpper,
-            liquidity: liquidity,
-            salt:      salt
+            user:             msg.sender,
+            tickLower:        tickLower,
+            tickUpper:        tickUpper,
+            liquidity:        liquidity,
+            salt:             salt,
+            stataDeposited0:  uint128(used0),
+            stataDeposited1:  uint128(used1)
         });
         _userPositionIds[msg.sender].push(positionId);
 

@@ -35,7 +35,7 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
       ? getAmountsForLiquidity(sqrtPrice, SQRT_PRICE_LOWER, SQRT_PRICE_UPPER, liquidity)
       : { amount0: 0n, amount1: 0n }
 
-  // Step 3: convert stata shares → underlying USDC/USDT via previewRedeem
+  // Step 3: convert current stata shares → underlying USDC/USDT via previewRedeem
   // previewRedeem(shares) returns assets at current Aave redemption rate.
   // This is where Aave yield is captured: rate has grown since deposit.
   const { data: usdc0 } = useReadContract({
@@ -47,9 +47,37 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
     args: [stataAmt1], query: { enabled: stataAmt1 > 0n },
   })
 
+  // Step 4: convert original deposited stata shares → USDC/USDT at current rate
+  // stataDeposited0/1 are the exact shares Uniswap consumed at deposit time.
+  // previewRedeem on them now gives what the original deposit would be worth today
+  // if it had just sat in Aave — isolating the pure Aave yield component.
+  // P&L = currentValue - depositValueAtCurrentRate
+  //   > 0: gained (fees + favorable price movement)
+  //   < 0: impermanent loss exceeded fees+yield
+  const stataDeposited0 = position?.stataDeposited0 ?? 0n
+  const stataDeposited1 = position?.stataDeposited1 ?? 0n
+  const { data: depositUsdc0 } = useReadContract({
+    address: STATA_USDC_ADDRESS, abi: ERC4626_ABI, functionName: 'previewRedeem',
+    args: [stataDeposited0], query: { enabled: stataDeposited0 > 0n },
+  })
+  const { data: depositUsdt1 } = useReadContract({
+    address: STATA_USDT_ADDRESS, abi: ERC4626_ABI, functionName: 'previewRedeem',
+    args: [stataDeposited1], query: { enabled: stataDeposited1 > 0n },
+  })
+
   const estUsdc = usdc0 !== undefined ? (Number(usdc0) / 1e6).toFixed(4) : null
   const estUsdt = usdt1 !== undefined ? (Number(usdt1) / 1e6).toFixed(4) : null
   const hasEstimate = estUsdc !== null || estUsdt !== null
+
+  // P&L: compare current underlying value vs deposited underlying value at current Aave rate.
+  // Both are in USDC/USDT (6 decimals). We sum across both tokens.
+  const pnlRaw =
+    usdc0 !== undefined && usdt1 !== undefined &&
+    depositUsdc0 !== undefined && depositUsdt1 !== undefined
+      ? Number(usdc0 + usdt1) - Number(depositUsdc0 + depositUsdt1)
+      : null
+  const pnl = pnlRaw !== null ? (pnlRaw / 1e6).toFixed(4) : null
+  const pnlPositive = pnlRaw !== null && pnlRaw >= 0
 
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -83,14 +111,24 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
           </p>
           <p className="text-[10px] text-outline font-label mt-1">Position #{positionId.toString()}</p>
 
-          {/* Estimated receive on removal */}
+          {/* Estimated receive + P&L on removal */}
           {hasEstimate && (
-            <div className="mt-3 bg-surface-container-low/60 rounded-md px-3 py-2 border border-outline-variant/10">
-              <p className="text-[10px] text-outline font-label uppercase tracking-tighter mb-1">Est. receive</p>
-              <p className="text-sm font-label font-bold text-secondary">
-                {estUsdc ?? '—'} USDC + {estUsdt ?? '—'} USDT
-              </p>
-              <p className="text-[9px] text-outline/60 font-label mt-0.5">excl. swap fees</p>
+            <div className="mt-3 bg-surface-container-low/60 rounded-md px-3 py-2 border border-outline-variant/10 space-y-2">
+              <div>
+                <p className="text-[10px] text-outline font-label uppercase tracking-tighter mb-1">Est. receive</p>
+                <p className="text-sm font-label font-bold text-secondary">
+                  {estUsdc ?? '—'} USDC + {estUsdt ?? '—'} USDT
+                </p>
+              </div>
+              {pnl !== null && (
+                <div className="border-t border-outline-variant/10 pt-2">
+                  <p className="text-[10px] text-outline font-label uppercase tracking-tighter mb-1">P&amp;L</p>
+                  <p className={`text-sm font-label font-bold ${pnlPositive ? 'text-emerald-400' : 'text-error-dim'}`}>
+                    {pnlPositive ? '+' : ''}{pnl} USD
+                  </p>
+                </div>
+              )}
+              <p className="text-[9px] text-outline/60 font-label">excl. swap fees · vs original deposit at current Aave rate</p>
             </div>
           )}
 

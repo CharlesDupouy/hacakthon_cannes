@@ -121,7 +121,7 @@ export default function App() {
             <p className="font-label text-xs tracking-tighter text-slate-500">© 2024 PoolUp. Powered by Uniswap v4 &amp; Aave.</p>
           </div>
           <div className="flex gap-8 font-label text-xs tracking-tighter">
-            <a href="https://sepolia.basescan.org/address/0xBdF688ee8034C64B8f75ddEBf4468634586FD000" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-violet-400 transition-colors">Contract</a>
+            <a href="https://sepolia.basescan.org/address/0x9F3464b13345cdb221Bc12A4c615a70145eC5000" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-violet-400 transition-colors">Contract</a>
             <a href="https://github.com" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-violet-400 transition-colors">GitHub</a>
             <a href="https://developers.uniswap.org" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-violet-400 transition-colors">Docs</a>
           </div>

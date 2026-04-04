@@ -52,6 +52,8 @@ export const YIELD_HOOK_ABI = [
           { name: 'tickUpper', type: 'int24' },
           { name: 'liquidity', type: 'uint128' },
           { name: 'salt', type: 'bytes32' },
+          { name: 'stataDeposited0', type: 'uint128' },
+          { name: 'stataDeposited1', type: 'uint128' },
         ],
       },
     ],
