@@ -54,7 +54,7 @@ export default function SwapCard() {
   }, [reversed])
 
   const fetchQuote = useCallback(
-    debounce(async (amount: string, isReversed: boolean) => {
+    debounce(async (amount: string, isReversed: boolean, swapper: string | undefined) => {
       if (!amount || parseFloat(amount) <= 0) { setQuote(null); return }
       setQuoteLoading(true)
       setQuoteError(null)
@@ -62,9 +62,7 @@ export default function SwapCard() {
         const raw = parseUnits(amount, 6).toString()
         const res = await fetch(`/api/uniswap/quote`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tokenIn:         isReversed ? MAINNET_USDT : MAINNET_USDC,
             tokenInChainId:  1,
@@ -73,19 +71,19 @@ export default function SwapCard() {
             amount:          raw,
             type:            'EXACT_INPUT',
             protocols:       ['V2', 'V3', 'V4'],
+            swapper:         swapper ?? '0x0000000000000000000000000000000000000001',
           }),
         })
-        if (!res.ok) throw new Error(`API error ${res.status}`)
         const data = await res.json()
+        if (!res.ok) throw new Error(data?.detail ?? data?.errorCode ?? `HTTP ${res.status}`)
         const outAmount = data?.quote?.output?.amount ?? data?.quoteDecimals ?? null
         if (outAmount) {
-          setQuote(parseFloat(outAmount).toFixed(4))
+          setQuote((Number(outAmount) / 1e6).toFixed(4))
         } else {
-          setQuote(null)
           setQuoteError('No route found')
         }
-      } catch {
-        setQuoteError('Failed to fetch quote')
+      } catch (e: unknown) {
+        setQuoteError(e instanceof Error ? e.message : 'Failed to fetch quote')
       } finally {
         setQuoteLoading(false)
       }
@@ -94,8 +92,8 @@ export default function SwapCard() {
   )
 
   useEffect(() => {
-    fetchQuote(amountIn, reversed)
-  }, [amountIn, reversed, fetchQuote])
+    fetchQuote(amountIn, reversed, address)
+  }, [amountIn, reversed, address, fetchQuote])
 
   const needsApproval = allowance !== undefined && parsedAmount > 0n && allowance < parsedAmount
 
