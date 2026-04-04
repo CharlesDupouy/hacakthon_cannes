@@ -1,18 +1,20 @@
 /**
  * Uniswap API Integration — Yield-Enhanced Swap
  *
- * This script demonstrates the Uniswap Trading API (trade-api.gateway.uniswap.org)
- * integrated with the YieldHook project:
+ * This script demonstrates the Uniswap Trading API (trade-api.gateway.uniswap.org):
  *
- *   1. GET pool info for the stataUSDC/stataUSDT v4 pool via /lp/pool_info
- *   2. GET a swap quote for USDC -> USDT on Base Sepolia via /quote
- *   3. EXECUTE a swap on Base Sepolia via /swap + ethers wallet
+ *   1. GET a USDC -> USDT quote on Ethereum mainnet via /quote
+ *      (Mainnet is used for quoting because Base Sepolia test tokens are not
+ *       indexed by the API. The quote shows the API's routing capabilities.)
+ *   2. EXECUTE a yield-enhanced swap on Base Sepolia via our YieldHook contract
+ *      (The hook wraps USDC -> Aave -> stataUSDC, swaps on v4, unwraps back)
  *
- * The API handles routing and calldata generation.
- * The YieldHook contract (deployed separately) handles the Aave wrap/unwrap layer.
+ * The Uniswap API handles optimal routing and calldata generation on mainnet.
+ * The YieldHook contract handles the Aave wrap/unwrap layer on testnet.
  *
  * Usage:
- *   npx tsx scripts/uniswap-api.ts
+ *   npx tsx scripts/uniswap-api.ts          # dry run (no tx)
+ *   npx tsx scripts/uniswap-api.ts --execute # execute testnet swap
  *
  * Required env vars (.env in project root):
  *   UNISWAP_API_KEY       — from developers.uniswap.org
@@ -35,13 +37,15 @@ const RPC_URL  = process.env.BASE_SEPOLIA_RPC_URL!;
 const PRIVATE_KEY = process.env.PRIVATE_KEY!;
 const YIELD_HOOK  = process.env.YIELD_HOOK_ADDRESS!;
 
-const CHAIN_ID = 84532; // Base Sepolia
+// Base Sepolia (our YieldHook deployment)
+const CHAIN_ID_TESTNET = 84532;
+const USDC_TESTNET     = "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f";
+const USDT_TESTNET     = "0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a";
 
-// Base Sepolia token addresses
-const USDC       = "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f";
-const USDT       = "0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a";
-const STATA_USDC = "0xf430cb6E2b85f99222fBFA6dFEa18Ff60FA6B32a";
-const STATA_USDT = "0xf63dA51069FAe9448747FA425F8Cb84B0149eC0F";
+// Ethereum mainnet (for Uniswap API quote demo)
+const CHAIN_ID_MAINNET = 1;
+const USDC_MAINNET     = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const USDT_MAINNET     = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 
 const SWAP_AMOUNT = "10000000"; // 10 USDC (6 decimals)
 
@@ -74,132 +78,83 @@ async function apiPost(path: string, body: object): Promise<any> {
   return JSON.parse(text);
 }
 
-// ─── Step 1: Pool info ────────────────────────────────────────────────────────
+// ─── Step 1: Quote via Uniswap API (Ethereum mainnet) ────────────────────────
+// Base Sepolia test tokens are not indexed by the Uniswap API.
+// We quote the same trade on mainnet to demonstrate the API, then execute
+// the yield-enhanced version on our testnet hook.
 
-async function getPoolInfo() {
-  console.log("\n[1/3] Fetching pool info via /lp/pool_info...");
-
-  try {
-    const data = await apiPost("/lp/pool_info", {
-      protocol:  "V4",
-      chainId:   CHAIN_ID,
-      poolId:    YIELD_HOOK, // V4 pools are identified by hook + key, use hook address
-    });
-    console.log("Pool info response:", JSON.stringify(data, null, 2));
-    return data;
-  } catch (err: any) {
-    // Pool may not be indexed yet if just deployed — fall back to static info
-    console.log("Pool info not available yet (pool may not be indexed):", err.message);
-    console.log("Pool details (from deployment):");
-    console.log("  Protocol:  Uniswap v4");
-    console.log("  Chain:     Base Sepolia (84532)");
-    console.log("  currency0: stataUSDC", STATA_USDC);
-    console.log("  currency1: stataUSDT", STATA_USDT);
-    console.log("  Fee:       0.05% (500)");
-    console.log("  Hook:     ", YIELD_HOOK || "(not yet deployed)");
-    return null;
-  }
-}
-
-// ─── Step 2: Quote ────────────────────────────────────────────────────────────
-
-async function getQuote(walletAddress: string) {
-  console.log("\n[2/3] Getting swap quote via /quote...");
-  console.log(`  Swapping ${Number(SWAP_AMOUNT) / 1e6} USDC -> USDT on Base Sepolia`);
+async function getMainnetQuote(walletAddress: string) {
+  console.log("\n[1/2] Getting USDC -> USDT quote via Uniswap API (Ethereum mainnet)...");
+  console.log(`  Amount: ${Number(SWAP_AMOUNT) / 1e6} USDC`);
+  console.log("  Note: quoting on mainnet because Base Sepolia test tokens are not indexed.");
 
   const body = {
-    tokenIn:        USDC,
-    tokenInChainId: CHAIN_ID,
-    tokenOut:       USDT,
-    tokenOutChainId: CHAIN_ID,
-    amount:         SWAP_AMOUNT,
-    type:           "EXACT_INPUT",
-    swapper:        walletAddress,
+    tokenIn:         USDC_MAINNET,
+    tokenInChainId:  CHAIN_ID_MAINNET,
+    tokenOut:        USDT_MAINNET,
+    tokenOutChainId: CHAIN_ID_MAINNET,
+    amount:          SWAP_AMOUNT,
+    type:            "EXACT_INPUT",
+    swapper:         walletAddress,
     slippageTolerance: 0.5,
-    protocols:      ["V2", "V3", "V4"],
-    urgency:        "normal",
+    protocols:       ["V2", "V3", "V4"],
+    urgency:         "normal",
   };
 
   const data = await apiPost("/quote", body);
 
-  const quote = data.quote;
+  const quote  = data.quote;
   const output = quote?.output?.amount ?? quote?.output;
   const route  = quote?.routeString ?? quote?.route ?? "N/A";
   const gasFee = quote?.gasFeeUSD ?? "N/A";
 
-  console.log("Quote received:");
+  console.log("\nQuote received (mainnet reference):");
   console.log(`  Input:     ${Number(SWAP_AMOUNT) / 1e6} USDC`);
-  console.log(`  Output:    ${Number(output) / 1e6} USDT`);
+  console.log(`  Output:    ${(Number(output) / 1e6).toFixed(6)} USDT`);
   console.log(`  Route:     ${typeof route === "string" ? route : JSON.stringify(route)}`);
   console.log(`  Gas (USD): $${gasFee}`);
   console.log(`  Routing:   ${data.routing}`);
+  console.log("\n  -> On our YieldHook, this same swap also earns Aave lending yield for LPs.");
 
   return data;
 }
 
-// ─── Step 3: Execute swap ─────────────────────────────────────────────────────
+// ─── Step 2: Execute yield-enhanced swap on Base Sepolia via YieldHook ────────
 
-async function executeSwap(quoteData: any, wallet: ethers.Wallet) {
-  console.log("\n[3/3] Executing swap via /swap...");
+const YIELD_HOOK_ABI = [
+  "function swap(address tokenIn, uint256 amountIn, uint256 amountOutMin) external returns (uint256)",
+];
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function balanceOf(address) external view returns (uint256)",
+];
 
-  // Build the swap transaction from the quote
-  const swapBody: any = {
-    quote:              quoteData.quote,
-    signature:          null,
-    simulateTransaction: false,
-  };
-  if (quoteData.permitData) {
-    swapBody.permitData = quoteData.permitData;
-  }
+async function executeTestnetSwap(wallet: ethers.Wallet) {
+  console.log("\n[2/2] Executing yield-enhanced swap on Base Sepolia via YieldHook...");
+  console.log(`  Contract: ${YIELD_HOOK}`);
+  console.log(`  Swap: 10 USDC -> USDT (USDC -> Aave -> stataUSDC -> pool -> stataUSDT -> Aave -> USDT)`);
 
-  const swapData = await apiPost("/swap", swapBody);
-  const tx = swapData.swap;
+  const hook  = new ethers.Contract(YIELD_HOOK, YIELD_HOOK_ABI, wallet);
+  const usdc  = new ethers.Contract(USDC_TESTNET, ERC20_ABI, wallet);
 
-  console.log("Swap transaction built:");
-  console.log("  to:       ", tx.to);
-  console.log("  value:    ", tx.value ?? "0");
-  console.log("  gasLimit: ", tx.gasLimit);
+  const balBefore = await (new ethers.Contract(USDT_TESTNET, ERC20_ABI, wallet)).balanceOf(wallet.address);
 
-  // Check if approval is needed first
-  console.log("\nChecking token approval...");
-  try {
-    const approvalData = await apiPost("/check_approval", {
-      token:         USDC,
-      amount:        SWAP_AMOUNT,
-      walletAddress: wallet.address,
-      chainId:       CHAIN_ID,
-    });
+  console.log("\nApproving USDC...");
+  const approveTx = await usdc.approve(YIELD_HOOK, BigInt(SWAP_AMOUNT));
+  await approveTx.wait();
+  console.log("  Approved.");
 
-    if (approvalData.approval) {
-      console.log("Approval required — sending approval tx...");
-      const approveTx = await wallet.sendTransaction({
-        to:   approvalData.approval.to,
-        data: approvalData.approval.data,
-      });
-      await approveTx.wait();
-      console.log("Approval tx:", approveTx.hash);
-    } else {
-      console.log("No approval needed.");
-    }
-  } catch (err: any) {
-    console.log("Approval check skipped:", err.message);
-  }
-
-  // Send the swap transaction
-  console.log("\nSending swap transaction...");
-  const sentTx = await wallet.sendTransaction({
-    to:       tx.to,
-    data:     tx.data,
-    value:    tx.value ? BigInt(tx.value) : 0n,
-    gasLimit: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
-  });
-
-  console.log("Swap tx submitted:", sentTx.hash);
-  console.log(`  https://sepolia.basescan.org/tx/${sentTx.hash}`);
-
-  const receipt = await sentTx.wait();
+  console.log("Calling hook.swap()...");
+  const swapTx = await hook.swap(USDC_TESTNET, BigInt(SWAP_AMOUNT), 0n);
+  const receipt = await swapTx.wait();
   console.log("Swap confirmed in block:", receipt?.blockNumber);
-  return sentTx.hash;
+  console.log(`  https://sepolia.basescan.org/tx/${swapTx.hash}`);
+
+  const balAfter = await (new ethers.Contract(USDT_TESTNET, ERC20_ABI, wallet)).balanceOf(wallet.address);
+  const usdtOut  = balAfter - balBefore;
+  console.log(`\nResult: 10 USDC -> ${(Number(usdtOut) / 1e6).toFixed(6)} USDT`);
+  console.log("  (LPs in this pool earned Aave yield + swap fees on this trade)");
+  return swapTx.hash;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -208,28 +163,29 @@ async function main() {
   requireEnv();
 
   console.log("Yield-Enhanced Swap — Uniswap API Demo");
-  console.log("Chain: Base Sepolia (84532)");
-  console.log("API:  ", API_BASE);
+  console.log("API:", API_BASE);
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
   const wallet   = new ethers.Wallet(PRIVATE_KEY, provider);
 
   console.log("\nWallet:", wallet.address);
   const balance = await provider.getBalance(wallet.address);
-  console.log("ETH balance:", ethers.formatEther(balance));
+  console.log("ETH balance (Base Sepolia):", ethers.formatEther(balance));
 
-  // Step 1: Pool info
-  await getPoolInfo();
+  // Step 1: Get a USDC -> USDT quote from the Uniswap Trading API (mainnet)
+  await getMainnetQuote(wallet.address);
 
-  // Step 2: Quote
-  const quoteData = await getQuote(wallet.address);
-
-  // Step 3: Execute (comment out to do a dry-run)
+  // Step 2: Execute the yield-enhanced swap on our testnet hook
   if (process.argv.includes("--execute")) {
-    await executeSwap(quoteData, wallet);
+    if (!YIELD_HOOK) {
+      console.error("\nSet YIELD_HOOK_ADDRESS in .env to execute the testnet swap.");
+      process.exit(1);
+    }
+    await executeTestnetSwap(wallet);
   } else {
-    console.log("\nDry-run complete. Pass --execute to submit the swap transaction.");
-    console.log("Example: npx tsx scripts/uniswap-api.ts --execute");
+    console.log("\nDry-run complete.");
+    console.log("Pass --execute to also submit the testnet swap transaction:");
+    console.log("  npx tsx uniswap-api.ts --execute");
   }
 
   console.log("\nDone.");
