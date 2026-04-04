@@ -71,13 +71,19 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
 
   // P&L: compare current underlying value vs deposited underlying value at current Aave rate.
   // Both are in USDC/USDT (6 decimals). We sum across both tokens.
-  const pnlRaw =
-    usdc0 !== undefined && usdt1 !== undefined &&
+  const depositTotal =
     depositUsdc0 !== undefined && depositUsdt1 !== undefined
-      ? Number(usdc0 + usdt1) - Number(depositUsdc0 + depositUsdt1)
+      ? Number(depositUsdc0 + depositUsdt1)
       : null
-  const pnl = pnlRaw !== null ? (pnlRaw / 1e6).toFixed(4) : null
-  const pnlPositive = pnlRaw !== null && pnlRaw >= 0
+  const currentTotal =
+    usdc0 !== undefined && usdt1 !== undefined
+      ? Number(usdc0 + usdt1)
+      : null
+  const pnlPct =
+    depositTotal !== null && currentTotal !== null && depositTotal > 0
+      ? ((currentTotal - depositTotal) / depositTotal) * 100
+      : null
+  const pnlPositive = pnlPct !== null && pnlPct >= 0
 
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -120,11 +126,11 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
                   {estUsdc ?? '—'} USDC + {estUsdt ?? '—'} USDT
                 </p>
               </div>
-              {pnl !== null && (
+              {pnlPct !== null && (
                 <div className="border-t border-outline-variant/10 pt-2">
                   <p className="text-[10px] text-outline font-label uppercase tracking-tighter mb-1">P&amp;L</p>
                   <p className={`text-sm font-label font-bold ${pnlPositive ? 'text-emerald-400' : 'text-error-dim'}`}>
-                    {pnlPositive ? '+' : ''}{pnl} USD
+                    {pnlPositive ? '+' : ''}{pnlPct.toFixed(2)}%
                   </p>
                 </div>
               )}
