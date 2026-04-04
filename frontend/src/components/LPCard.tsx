@@ -107,12 +107,6 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
         )}
       </div>
 
-      {/* Sync icon */}
-      <div className="flex justify-center -my-1 relative z-10">
-        <div className="bg-surface-container-high p-2 rounded-full ghost-border shadow-xl">
-          <span className="material-symbols-outlined text-secondary text-sm">lock</span>
-        </div>
-      </div>
 
       {/* Input 1 — USDT */}
       <div className="space-y-2 mb-8 mt-4">
