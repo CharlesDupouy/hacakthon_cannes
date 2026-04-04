@@ -78,7 +78,6 @@ export default function SwapCard() {
     <div className="glass-card ghost-border w-full max-w-[420px] rounded-xl p-6 relative">
       <div className="flex justify-between items-center mb-6">
         <h2 className="font-headline text-xl font-bold text-on-surface">Swap</h2>
-        <span className="material-symbols-outlined text-outline cursor-pointer hover:text-primary transition-colors">settings</span>
       </div>
 
       {/* Pay */}
