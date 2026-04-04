@@ -92,6 +92,11 @@ function PositionRow({ positionId, onRemoved }: { positionId: bigint; onRemoved:
 
   if (removeSuccess) { onRemoved(); return null }
 
+  // Position was previously removed (liquidity set to 0 by the hook) but the
+  // ID is still in the user's array on-chain. Skip rendering it — attempting
+  // to remove a 0-liquidity position calls modifyLiquidity(delta=0) which reverts.
+  if (position && position.liquidity === 0n) return null
+
   return (
     <div className="bg-surface-container-high/30 p-6 rounded-lg ghost-border hover:bg-surface-container-high/50 transition-all group">
       <div className="flex justify-between items-start mb-6">
