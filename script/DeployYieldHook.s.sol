@@ -48,9 +48,10 @@ contract DeployYieldHook is Script {
     function run() external {
         vm.startBroadcast();
 
-        // Mine a CREATE2 salt that produces a hook address with the right permission bits.
-        // The deployer of a CREATE2 contract is the tx origin (msg.sender in the script).
-        address deployer = msg.sender;
+        // Mine using the CREATE2 factory as the deployer (not msg.sender).
+        // Foundry routes `new Contract{salt: s}()` through CREATE2_FACTORY in broadcasts.
+        // CREATE2_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C (from forge-std/Base.sol)
+        address deployer = CREATE2_FACTORY;
         bytes memory creationCode = type(YieldHook).creationCode;
         bytes memory constructorArgs = abi.encode(
             IPoolManager(POOL_MANAGER),

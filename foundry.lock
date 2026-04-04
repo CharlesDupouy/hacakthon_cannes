@@ -17,6 +17,12 @@
   "lib/v3-periphery": {
     "rev": "80f26c86c57b8a5e4b913f42844d4c8bd274d058"
   },
+  "lib/v4-core": {
+    "tag": {
+      "name": "v4.0.0",
+      "rev": "e50237c43811bd9b526eff40f26772152a42daba"
+    }
+  },
   "lib\\aave-v3-core": {
     "tag": {
       "name": "v1.19.4",
