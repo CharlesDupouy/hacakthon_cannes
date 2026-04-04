@@ -84,7 +84,6 @@ export default function LPCard({ onPositionAdded }: { onPositionAdded: () => voi
     <div className="glass-card ghost-border rounded-lg p-8 relative overflow-hidden">
       <div className="flex justify-between items-center mb-10">
         <h2 className="font-headline font-bold text-2xl">Add Liquidity</h2>
-        <span className="material-symbols-outlined text-primary-dim cursor-pointer hover:rotate-180 transition-transform duration-500">settings</span>
       </div>
 
       {/* Input 0 — USDC */}
