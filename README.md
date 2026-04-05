@@ -211,14 +211,3 @@ forge test --match-path test/YieldHookSimulation.t.sol -vv
 
 ---
 
-## Hackathon checklist
-
-- [x] PoolUp deployed on Base Sepolia
-- [x] Uniswap v4 pool created with Aave stataToken pair
-- [x] Add liquidity transaction on-chain
-- [x] Swap transaction on-chain
-- [x] Remove liquidity transaction on-chain
-- [x] Uniswap Trading API used for quoting (`scripts/uniswap-api.ts` + frontend proxy)
-- [x] React frontend with swap + LP management
-- [ ] 3-minute demo video
-- [ ] Uniswap Developer Feedback Form: https://developers.uniswap.org/feedback
