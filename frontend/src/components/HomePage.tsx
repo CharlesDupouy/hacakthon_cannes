@@ -20,14 +20,14 @@ export default function HomePage({ setTab }: HomePageProps) {
         </div>
 
         <h1 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tight text-on-surface mb-6 leading-tight">
-          Swap smarter.{' '}
+          One pool.{' '}
           <span className="bg-gradient-to-r from-violet-400 to-pink-500 bg-clip-text text-transparent">
-            Earn more.
+            Two yield sources.
           </span>
         </h1>
 
         <p className="font-body text-outline text-lg md:text-xl max-w-2xl leading-relaxed mb-12">
-          PoolUp lets you swap USDC ↔ USDT while the pool's liquidity earns{' '}
+          PoolUp is a USDC ↔ USDT pool where LPs earn{' '}
           <span className="text-slate-200">Uniswap swap fees</span> and{' '}
           <span className="text-slate-200">Aave lending yield</span> simultaneously — with no extra steps.
         </p>
