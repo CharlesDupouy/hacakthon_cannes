@@ -208,13 +208,6 @@ source .env
 forge test --match-path test/YieldHookSimulation.t.sol -vv
 ```
 
----
-
-## Known limitations
-
-- **Pool initialized at 1:1** — stataUSDC has a higher Aave liquidityIndex than stataUSDT on this testnet, so the "fair" internal price differs from 1:1. This causes slight slippage on swaps. Acceptable for demo purposes.
-- **No reward emissions on testnet** — `claimRewards()` is implemented and working but yields nothing on Base Sepolia (Aave has no active reward programs there).
-- **P&L estimate excludes swap fees** — displaying accumulated fees requires reading `feeGrowthInside` from PoolManager storage slots, which is complex. The P&L shown is principal + Aave yield only; actual receive on removal will be slightly higher.
 
 ---
 
