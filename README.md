@@ -8,37 +8,7 @@
 
 **PoolUp** lets users swap **USDC ↔ USDT** and provide liquidity through a React frontend. Under the hood, the Uniswap v4 pool holds **Aave StaticATokenLM** (stataToken) versions of both tokens — so liquidity providers earn **Uniswap swap fees + Aave lending yield simultaneously**, with no extra steps.
 
-```
-User sends USDC
-       │
-       ▼
-┌──────────────────────────────────────────┐
-│              PoolUp.sol                  │
-│        (Uniswap v4 Hook — our code)      │
-│                                          │
-│  swap()                                  │
-│    1. Pull USDC from user                │
-│    2. Deposit USDC → Aave → stataUSDC    │
-│    3. Swap stataUSDC → stataUSDT (v4)    │
-│    4. Redeem stataUSDT → USDT            │
-│    5. Send USDT to user                  │
-│                                          │
-│  addLiquidity()                          │
-│    1. Pull USDC + USDT from user         │
-│    2. Wrap both via Aave → stataTokens   │
-│    3. Add to v4 pool as concentrated LP  │
-│    4. Refund unused stataTokens          │
-│                                          │
-│  removeLiquidity()                       │
-│    1. Burn LP position in v4 pool        │
-│    2. Redeem stataTokens → USDC + USDT   │
-│    3. Send to user (more than deposited) │
-└──────────────────────────────────────────┘
-       │
-       ▼
- Aave yield accrues inside stataToken share price
- (non-rebasing ERC-4626 — safe for Uniswap math)
-```
+![PoolUp architecture](./scheme.png)
 
 ### Why StaticATokenLM?
 
