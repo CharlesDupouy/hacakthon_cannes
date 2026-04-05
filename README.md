@@ -1,6 +1,8 @@
 # PoolUp — Yield-Enhanced Swap on Uniswap v4
 
 > Hackathon project — Uniswap API Track
+>
+> **Live demo:** [hacakthon-cannes.vercel.app](https://hacakthon-cannes.vercel.app/)
 
 ## What it does
 
@@ -181,6 +183,29 @@ frontend/
     liquidityMath.ts          # TypeScript port of LiquidityAmounts.sol
     constants.ts              # Contract addresses + pool storage slot
     abis.ts                   # Contract ABIs
+```
+
+---
+
+## Simulation results — LP yield proof
+
+Foundry fork tests (`test/YieldHookSimulation.t.sol`) fork Base Sepolia with real Aave v3 and Uniswap v4 contracts, simulate years of Aave index growth and realistic swap volume, then prove LPs earn more than direct Aave depositors. Full analysis in [`testresults.md`](./testresults.md).
+
+| Scenario | TVL | Duration | Aave APY | Fee APY | **Total APY** |
+|---|---|---|---|---|---|
+| Conservative | 400k USD | 1 year | 4.00% | +1.00% | **5.06%** |
+| Moderate | 1.7M USD | 3 years | 5.25% | +1.18% | **6.42%** |
+| Bull market | 5M USD | 5 years | 6.77% | +0.70% | **7.47%** |
+
+Swap volumes are calibrated to realistic USDC/USDT pool data (10–20× TVL/year). Three mathematical proofs validate every run:
+
+- **Proof A** — Aave index grew by exactly the configured compound APY
+- **Proof B** — each LP received at least principal + 90% of expected Aave yield
+- **Proof C** — net swap fees match the theoretical 0.05% rate within 3%
+
+```bash
+source .env
+forge test --match-path test/YieldHookSimulation.t.sol -vv
 ```
 
 ---
