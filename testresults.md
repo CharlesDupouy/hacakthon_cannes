@@ -89,11 +89,13 @@ The 24% gap means the pool must be initialized at `sqrtPrice = sqrt(1.240284 / 1
 | Total deposited | 399,999 USD |
 | Total received | 420,242 USD |
 | **Net gain** | **+20,243 USD (+5.06%)** |
-| Aave yield share | 79% of total gain (16,000 USD) |
-| Swap fee share | **28% of total gain** (6,279 USD) |
+| Aave yield | +16,000 USD (+79% of net gain) |
+| Swap fees | +6,279 USD (+31% of net gain) |
+| Impermanent loss | −2,036 USD (−10% of net gain) |
+| Check: 79% + 31% − 10% | = 100% ✓ |
 | Blended APY | **5.06%/yr** |
 
-**Analysis:** At 20× TVL/year volume, swap fees contribute a clearly visible **1.0% APY** on top of the 4% Aave yield. Fees account for 28% of total LP earnings — comparable to what an LP would earn on a mature low-fee stablecoin pool for fees alone, on top of the Aave yield that non-LP USDC holders also capture.
+**Analysis:** At 20× TVL/year volume, swap fees contribute a clearly visible **1.0% APY** on top of the 4% Aave yield. Fees account for 31% of the gross yield sources before IL. The ~2,036 USD IL arises from small price drift over 1,000 swaps — at 0.05% fee tier, the pool rebalances frequently enough that IL stays below 0.5% of principal and is more than offset by fees.
 
 ---
 
@@ -200,13 +202,13 @@ All within 3% of the theoretical formula `numSwaps × swapSize × 0.05% × rateG
 
 ## Summary table
 
-| Scenario | TVL | Duration | Aave APY | Fee APY | **Total APY** | Fee % of gain |
-|---|---|---|---|---|---|---|
-| Conservative | 400k | 1yr | 4.00% | **1.00%** | **5.06%** | 28% |
-| Moderate | 1.7M | 3yr | 5.25% | **1.18%** | **6.42%** | 18% |
-| Bull | 5M | 5yr | 6.77% | **0.70%** | **7.47%** | 9% |
+| Scenario | TVL | Duration | Aave APY | Fee APY | IL drag | **Total APY** | Fee % of gross yield |
+|---|---|---|---|---|---|---|---|
+| Conservative | 400k | 1yr | 4.00% | **1.00%** | −0.51% | **5.06%** | 31% |
+| Moderate | 1.7M | 3yr | 5.25% | **1.18%** | ~0% | **6.42%** | 18% |
+| Bull | 5M | 5yr | 6.77% | **0.70%** | ~0% | **7.47%** | 9% |
 
-The decreasing fee share in longer scenarios reflects Aave's compounding: yield compounds year-over-year while fees remain proportional to volume. Over 5 years, Aave yield dominates. Over shorter horizons, fees are a more significant contributor.
+The decreasing fee share in longer scenarios reflects Aave's compounding: yield compounds year-over-year while fees remain proportional to volume. Over 5 years, Aave yield dominates. Over shorter horizons, fees are a more significant contributor. IL is small in all cases and negligible over multi-year horizons — the 0.51% drag in scenario 1 is more than covered by the 1.00% fee APY.
 
 ---
 
