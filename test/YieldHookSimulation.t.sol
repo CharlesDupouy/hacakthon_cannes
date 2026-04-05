@@ -598,69 +598,99 @@ contract YieldHookSimulation is Test {
     //                            TEST SCENARIOS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Scenario 1 - Conservative
-    ///   2 equal LPs, 1 year, 4% Aave APY, 52 swaps (one per week), 500 USDC each.
-    ///   Swap size = 0.25% of pool — realistic retail trading.
-    ///   Expected: ~4% APY from Aave + small fee contribution (~0.13% APY).
+    /// @notice Scenario 1 - Conservative (1 year, 4% Aave APY)
+    ///
+    ///   Volume calibration:
+    ///     TVL       = 400,000 USD  (2 LPs × 100k each side)
+    ///     Swaps     = 1,000 × 8,000 USDC = 8M USD/year = 20× TVL/year
+    ///     Frequency = ~19 swaps/week  (AM + PM on most days)
+    ///     vs. real data: L2 stablecoin pools see 73-3,640× TVL/year on 0.01% tiers;
+    ///       a 0.05% pool naturally attracts ~4-5× less volume → realistic floor ~15-20× TVL/year.
+    ///
+    ///   Expected yield breakdown:
+    ///     Aave yield  ≈ 4.00% APY
+    ///     Swap fees   ≈ 1.00% APY  (= 8M × 0.05% / 400k)
+    ///     Total       ≈ 5.00% APY
     function test_scenario1_conservative_1year() public {
         address[] memory lps = new address[](2);
         lps[0] = alice; lps[1] = bob;
         uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 100_000e6; // 100k USDC per LP
+        amounts[0] = 100_000e6;
         amounts[1] = 100_000e6;
 
         _runScenario(ScenarioParams({
-            name:          "Conservative | 2 LPs x 100k | 1 yr | 4% APY | 52 swaps x 500 USDC",
+            name:          "Conservative | 2 LPs x 100k | 1yr | 4% APY | 1000 swaps x 8k USDC",
             durationYears: 1,
             aaveApyBps:    400,
-            numSwaps:      52,
-            swapSizeUsdc:  500e6,   // 0.25% of pool per swap
+            numSwaps:      1000,
+            swapSizeUsdc:  8_000e6,  // 2% of TVL per swap — realistic retail/bot flow
             lps:           lps,
             lpAmountsUsdc: amounts
         }));
     }
 
-    /// @notice Scenario 2 - Moderate (unequal LPs)
-    ///   3 LPs with different positions, 3 years, 5% Aave APY, 312 swaps.
-    ///   Shows that fees are distributed proportionally to liquidity share.
-    ///   Swap size = 0.2% of pool — active trading environment.
+    /// @notice Scenario 2 - Moderate, unequal LPs (3 years, 5% Aave APY)
+    ///
+    ///   Volume calibration:
+    ///     TVL       = 1,700,000 USD  (500k + 250k + 100k per side)
+    ///     Swaps     = 2,040 total × 50,000 USDC = 34M USD/year = 20× TVL/year
+    ///     Frequency = ~13 swaps/week  (consistent daily trading activity)
+    ///     Swap size = 2.9% of TVL — matches DEX aggregator route sizes on L2 pools.
+    ///
+    ///   Expected yield breakdown (per year):
+    ///     Aave yield  ≈ 5.25% APY  (compounded: (1.05)^3 - 1 = 15.76% total)
+    ///     Swap fees   ≈ 1.00% APY  (= 34M × 0.05% / 1.7M)
+    ///     Total       ≈ 6.25% APY
+    ///
+    ///   Demonstrates: fee income is proportional to liquidity share regardless of LP size.
     function test_scenario2_moderate_3years() public {
         address[] memory lps = new address[](3);
         lps[0] = alice; lps[1] = bob; lps[2] = carol;
         uint256[] memory amounts = new uint256[](3);
-        amounts[0] = 500_000e6; // 500k - dominant LP
-        amounts[1] = 250_000e6; // 250k
-        amounts[2] = 100_000e6; // 100k - small LP
+        amounts[0] = 500_000e6;
+        amounts[1] = 250_000e6;
+        amounts[2] = 100_000e6;
 
         _runScenario(ScenarioParams({
-            name:          "Moderate | 3 unequal LPs | 3 yrs | 5% APY | 312 swaps x 1k USDC",
+            name:          "Moderate | 3 unequal LPs | 3yrs | 5% APY | 2040 swaps x 50k USDC",
             durationYears: 3,
             aaveApyBps:    500,
-            numSwaps:      312,
-            swapSizeUsdc:  1_000e6, // 0.12% of pool per swap
+            numSwaps:      2040,
+            swapSizeUsdc:  50_000e6, // 2.9% of TVL per swap
             lps:           lps,
             lpAmountsUsdc: amounts
         }));
     }
 
-    /// @notice Scenario 3 - Bull market (high APY + high volume)
-    ///   4 LPs, 5 years, 6% Aave APY, 1040 swaps (4 per week), moderate swap sizes.
-    ///   Shows compound Aave growth over 5 years (1.06^5 = +33.8%) plus fee income.
+    /// @notice Scenario 3 - Bull market (5 years, 6% Aave APY)
+    ///
+    ///   Volume calibration:
+    ///     TVL       = 5,000,000 USD  (1M + 750k + 500k + 250k per side)
+    ///     Swaps     = 2,600 total × 100,000 USDC = 52M USD/year = 10.4× TVL/year
+    ///     Frequency = 10 swaps/week  (comparable to a small but established L2 pool)
+    ///     Swap size = 2% of TVL — within normal DEX aggregator route limits.
+    ///     Note: 5-year horizon makes gas accumulation the binding constraint;
+    ///       10× TVL/year is the lower bound of real stablecoin pool activity.
+    ///
+    ///   Expected yield breakdown (per year):
+    ///     Aave yield  ≈ 6.77% APY  (compounded: (1.06)^5 - 1 = 33.82% total)
+    ///     Swap fees   ≈ 0.52% APY  (= 52M × 0.05% / 5M)
+    ///     Total       ≈ 7.29% APY  (+38.6% over 5 years)
     function test_scenario3_bull_5years() public {
         address[] memory lps = new address[](4);
         lps[0] = alice; lps[1] = bob; lps[2] = carol; lps[3] = dave;
         uint256[] memory amounts = new uint256[](4);
-        amounts[0] = 1_000_000e6; // 1M USDC
+        amounts[0] = 1_000_000e6;
         amounts[1] =   750_000e6;
         amounts[2] =   500_000e6;
         amounts[3] =   250_000e6;
 
         _runScenario(ScenarioParams({
-            name:          "Bull | 4 LPs | 5 yrs | 6% APY | 1040 swaps x 5k USDC",
+            name:          "Bull | 4 LPs | 5yrs | 6% APY | 2600 swaps x 100k USDC",
             durationYears: 5,
             aaveApyBps:    600,
-            numSwaps:      1040,
-            swapSizeUsdc:  5_000e6, // 0.2% of pool per swap
+            numSwaps:      2600,
+            swapSizeUsdc:  100_000e6, // 2% of TVL per swap
             lps:           lps,
             lpAmountsUsdc: amounts
         }));
