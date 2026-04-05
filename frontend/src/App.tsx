@@ -3,11 +3,12 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import SwapCard from './components/SwapCard'
 import LPCard from './components/LPCard'
 import PositionList from './components/PositionList'
+import HomePage from './components/HomePage'
 
-type Tab = 'swap' | 'liquidity'
+type Tab = 'home' | 'swap' | 'liquidity'
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('swap')
+  const [tab, setTab] = useState<Tab>('home')
   const [refreshKey, setRefreshKey] = useState(0)
 
   return (
@@ -17,14 +18,14 @@ export default function App() {
       <nav className="fixed top-0 w-full bg-slate-950/40 backdrop-blur-xl z-50 shadow-[0_0_20px_rgba(189,157,255,0.05)]">
         <div className="flex justify-between items-center px-8 py-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-10">
-            <div className="flex flex-col">
+            <button onClick={() => setTab('home')} className="flex flex-col text-left">
               <span className="text-2xl font-bold bg-gradient-to-r from-violet-400 to-pink-500 bg-clip-text text-transparent font-headline">
                 PoolUp
               </span>
               <span className="font-label text-[10px] tracking-widest text-slate-400 uppercase hidden md:block">
                 Swap USDC ↔ USDT · Earn Aave Yield
               </span>
-            </div>
+            </button>
             <div className="hidden md:flex gap-8 items-center">
               <button
                 onClick={() => setTab('swap')}
@@ -51,6 +52,9 @@ export default function App() {
           <ConnectButton />
         </div>
       </nav>
+
+      {/* Home page */}
+      {tab === 'home' && <HomePage setTab={setTab} />}
 
       {/* Swap page */}
       {tab === 'swap' && (
