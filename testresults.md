@@ -1,4 +1,4 @@
-# YieldHook Simulation — Test Results & Analysis
+# PoolUp Simulation — Test Results & Analysis
 
 > **File:** `test/YieldHookSimulation.t.sol`
 > **Run command:** `source .env && forge test --match-path test/YieldHookSimulation.t.sol -vv`
@@ -9,7 +9,7 @@
 
 ## What is being tested
 
-The simulation forks Base Sepolia to access real deployed contracts (Aave v3, Uniswap v4 PoolManager, stataUSDC/stataUSDT) and proves that **YieldHook LPs earn more than if they had just held USDC/USDT**, thanks to two stacked yield sources:
+The simulation forks Base Sepolia to access real deployed contracts (Aave v3, Uniswap v4 PoolManager, stataUSDC/stataUSDT) and proves that **PoolUp LPs earn more than if they had just held USDC/USDT**, thanks to two stacked yield sources:
 
 1. **Aave lending yield** — the pool holds stataTokens (Aave ERC-4626 wrappers) whose share price grows as the Aave `liquidityIndex` accrues interest.
 2. **Uniswap swap fees** — every swap pays a 0.05% fee in stataTokens, which also appreciate with the Aave rate over time.

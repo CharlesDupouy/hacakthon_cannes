@@ -11,7 +11,7 @@ User sends USDC
        │
        ▼
 ┌──────────────────────────────────────────┐
-│              YieldHook.sol               │
+│              PoolUp.sol                  │
 │        (Uniswap v4 Hook — our code)      │
 │                                          │
 │  swap()                                  │
@@ -50,7 +50,7 @@ Aave's aTokens rebase: the balance increases over time as interest accrues. This
 
 | Contract | Address |
 |---|---|
-| YieldHook | [`0x9F3464b13345cdb221Bc12A4c615a70145eC5000`](https://sepolia.basescan.org/address/0x9F3464b13345cdb221Bc12A4c615a70145eC5000) |
+| PoolUp | [`0x9F3464b13345cdb221Bc12A4c615a70145eC5000`](https://sepolia.basescan.org/address/0x9F3464b13345cdb221Bc12A4c615a70145eC5000) |
 | Uniswap v4 PoolManager | `0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408` |
 | USDC (Aave TestnetERC20) | `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f` |
 | USDT (Aave TestnetERC20) | `0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a` |
@@ -67,7 +67,7 @@ Aave's aTokens rebase: the balance increases over time as interest accrues. This
 | currency1 | stataUSDT |
 | Fee tier | 0.05% (500) |
 | Tick spacing | 10 |
-| Hook | YieldHook above |
+| Hook | PoolUp above |
 
 ### Proof of working transactions
 
@@ -112,7 +112,7 @@ The Vite dev server proxies `/api/uniswap/*` → Uniswap Trading API to avoid CO
 
 `scripts/uniswap-api.ts` uses the Uniswap Trading API with a valid API key.
 
-It quotes **USDC → USDT on Ethereum mainnet** (chain 1) — testnet tokens are not indexed by the routing API, so mainnet is used to demonstrate real route discovery and quote data. The actual swap executes on Base Sepolia via the YieldHook.
+It quotes **USDC → USDT on Ethereum mainnet** (chain 1) — testnet tokens are not indexed by the routing API, so mainnet is used to demonstrate real route discovery and quote data. The actual swap executes on Base Sepolia via PoolUp.
 
 ```bash
 cd scripts && npm install
@@ -158,12 +158,12 @@ POSITION_ID=0 forge script script/RemoveLiquidityV4.s.sol \
 
 ```
 src/
-  YieldHook.sol               # Core hook — wraps/unwraps Aave, manages LP positions
+  PoolUp.sol                  # Core hook — wraps/unwraps Aave, manages LP positions
   interfaces/
     IStaticATokenLM.sol       # Aave StaticATokenLM interface (ERC-4626 + claimRewards)
 
 script/
-  DeployYieldHook.s.sol       # CREATE2 mining + deploy
+  DeployPoolUp.s.sol          # CREATE2 mining + deploy
   InitializePool.s.sol        # Create the v4 pool
   AddLiquidityV4.s.sol        # Add USDC + USDT as full-range liquidity
   SwapV4.s.sol                # Swap USDC → USDT through the hook
@@ -195,7 +195,7 @@ frontend/
 
 ## Hackathon checklist
 
-- [x] YieldHook deployed on Base Sepolia
+- [x] PoolUp deployed on Base Sepolia
 - [x] Uniswap v4 pool created with Aave stataToken pair
 - [x] Add liquidity transaction on-chain
 - [x] Swap transaction on-chain

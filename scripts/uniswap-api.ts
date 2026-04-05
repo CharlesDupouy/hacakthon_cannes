@@ -6,11 +6,11 @@
  *   1. GET a USDC -> USDT quote on Ethereum mainnet via /quote
  *      (Mainnet is used for quoting because Base Sepolia test tokens are not
  *       indexed by the API. The quote shows the API's routing capabilities.)
- *   2. EXECUTE a yield-enhanced swap on Base Sepolia via our YieldHook contract
+ *   2. EXECUTE a yield-enhanced swap on Base Sepolia via our PoolUp contract
  *      (The hook wraps USDC -> Aave -> stataUSDC, swaps on v4, unwraps back)
  *
  * The Uniswap API handles optimal routing and calldata generation on mainnet.
- * The YieldHook contract handles the Aave wrap/unwrap layer on testnet.
+ * The PoolUp contract handles the Aave wrap/unwrap layer on testnet.
  *
  * Usage:
  *   npx tsx scripts/uniswap-api.ts          # dry run (no tx)
@@ -20,7 +20,7 @@
  *   UNISWAP_API_KEY       — from developers.uniswap.org
  *   PRIVATE_KEY           — wallet private key (0x...)
  *   BASE_SEPOLIA_RPC_URL  — e.g. https://base-sepolia.g.alchemy.com/v2/...
- *   YIELD_HOOK_ADDRESS    — deployed YieldHook contract address
+ *   POOLUP_ADDRESS    — deployed PoolUp contract address
  */
 
 import * as dotenv from "dotenv";
@@ -35,9 +35,9 @@ const API_BASE = "https://trade-api.gateway.uniswap.org/v1";
 const API_KEY  = process.env.UNISWAP_API_KEY!;
 const RPC_URL  = process.env.BASE_SEPOLIA_RPC_URL!;
 const PRIVATE_KEY = process.env.PRIVATE_KEY!;
-const YIELD_HOOK  = process.env.YIELD_HOOK_ADDRESS!;
+const POOLUP      = process.env.POOLUP_ADDRESS!;
 
-// Base Sepolia (our YieldHook deployment)
+// Base Sepolia (our PoolUp deployment)
 const CHAIN_ID_TESTNET = 84532;
 const USDC_TESTNET     = "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f";
 const USDT_TESTNET     = "0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a";
@@ -114,14 +114,14 @@ async function getMainnetQuote(walletAddress: string) {
   console.log(`  Route:     ${typeof route === "string" ? route : JSON.stringify(route)}`);
   console.log(`  Gas (USD): $${gasFee}`);
   console.log(`  Routing:   ${data.routing}`);
-  console.log("\n  -> On our YieldHook, this same swap also earns Aave lending yield for LPs.");
+  console.log("\n  -> On our PoolUp, this same swap also earns Aave lending yield for LPs.");
 
   return data;
 }
 
-// ─── Step 2: Execute yield-enhanced swap on Base Sepolia via YieldHook ────────
+// ─── Step 2: Execute yield-enhanced swap on Base Sepolia via PoolUp ────────
 
-const YIELD_HOOK_ABI = [
+const POOLUP_ABI = [
   "function swap(address tokenIn, uint256 amountIn, uint256 amountOutMin) external returns (uint256)",
 ];
 const ERC20_ABI = [
@@ -130,17 +130,17 @@ const ERC20_ABI = [
 ];
 
 async function executeTestnetSwap(wallet: ethers.Wallet) {
-  console.log("\n[2/2] Executing yield-enhanced swap on Base Sepolia via YieldHook...");
-  console.log(`  Contract: ${YIELD_HOOK}`);
+  console.log("\n[2/2] Executing yield-enhanced swap on Base Sepolia via PoolUp...");
+  console.log(`  Contract: ${POOLUP}`);
   console.log(`  Swap: 10 USDC -> USDT (USDC -> Aave -> stataUSDC -> pool -> stataUSDT -> Aave -> USDT)`);
 
-  const hook  = new ethers.Contract(YIELD_HOOK, YIELD_HOOK_ABI, wallet);
+  const hook  = new ethers.Contract(POOLUP, POOLUP_ABI, wallet);
   const usdc  = new ethers.Contract(USDC_TESTNET, ERC20_ABI, wallet);
 
   const balBefore = await (new ethers.Contract(USDT_TESTNET, ERC20_ABI, wallet)).balanceOf(wallet.address);
 
   console.log("\nApproving USDC...");
-  const approveTx = await usdc.approve(YIELD_HOOK, BigInt(SWAP_AMOUNT));
+  const approveTx = await usdc.approve(POOLUP, BigInt(SWAP_AMOUNT));
   await approveTx.wait();
   console.log("  Approved.");
 
@@ -177,8 +177,8 @@ async function main() {
 
   // Step 2: Execute the yield-enhanced swap on our testnet hook
   if (process.argv.includes("--execute")) {
-    if (!YIELD_HOOK) {
-      console.error("\nSet YIELD_HOOK_ADDRESS in .env to execute the testnet swap.");
+    if (!POOLUP) {
+      console.error("\nSet POOLUP_ADDRESS in .env to execute the testnet swap.");
       process.exit(1);
     }
     await executeTestnetSwap(wallet);
